@@ -15,7 +15,7 @@ State the decision to take in one sentence and get the human to confirm it. Coll
 
 ## 2. Ask the memory
 
-Delegate to the `coda:memory` agent: the decision, the options, and the question "what have we decided that bears on this, and does any option contradict a decision in force or the intent?". Show the human what came back, contradictions first. If an option contradicts a decision in force, that is not a blocker — it means this decision would supersede the old one, and the human should know it is doing so.
+Delegate to the `coda:memory` agent: the decision, the options, and the question "what have we decided that bears on this, and does any option contradict a decision in force or the intent? Which entities and links would place this decision in the graph?". Pass it the CLI line above. Show the human what came back, contradictions first. If an option contradicts a decision in force, that is not a blocker — it means this decision would supersede the old one, and the human should know it is doing so.
 
 ## 3. Simulate
 
@@ -37,7 +37,11 @@ date: <YYYY-MM-DD>
 type: strategic | tactical | operational
 status: decided
 maker: <name> (<role>)
-tags: [<systems, technologies, themes someone would search for>]
+tags: [<free words someone would search for>]
+entities: [<type:name, …> — what this decision is about]
+depends-on: [<ids of decisions this one relies on>]
+contradicts: [<ids of decisions in force it conflicts with, if the human chose to leave both standing>]
+related: [<ids>]
 supersedes: <id, if any>
 simulated: true | false
 ---
@@ -64,6 +68,8 @@ What is knowingly given up, and the risks taken.
 ## Review
 When or on what signal this decision should be looked at again.
 ```
+
+The `entities` and the links are what place this decision in the team's knowledge graph. Take the ones the memory agent proposed, show them to the human with the record, and keep what they confirm. Entity types are `team`, `technology`, `tool`, `component`, `concept`, `process`, `metric`, `constraint`, `risk`, `opportunity`; reuse existing names (`coda graph --format entities`) rather than coining a second name for the same thing. People are never entities.
 
 If it supersedes an earlier decision, set that record's `status: superseded` and add a line pointing to the new one; change nothing else in it — the history stays as it was. Then `coda journal add decision.recorded --data '{"id": "D-0007", "type": "…", "maker": "<name>", "simulated": true}' --actor human:<name>`.
 

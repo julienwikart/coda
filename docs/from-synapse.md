@@ -16,7 +16,8 @@ CODA goes where the work already is. The coding agent a team uses every day is t
 | Web dashboards per role | `/coda:status`, and the files themselves |
 | JWT, API keys, role permissions on API routes | The harness's permissions, set by autonomy level |
 | Event log table | Append-only, hash-chained journal |
-| Embedding search over decisions | The memory agent reading and searching records |
+| Knowledge graph: entities extracted by an LLM call, relations stored in tables, a React Flow page | Typed entities and links in each record's frontmatter, proposed by the memory agent and confirmed by a human; `coda graph` derives the graph on demand and renders it as Mermaid |
+| Embedding search over decisions | The memory agent reading and searching records, starting from the graph |
 
 ## What carried over
 
@@ -24,6 +25,8 @@ CODA goes where the work already is. The coding agent a team uses every day is t
 - The four human roles and their vetoes.
 - The four cognitive agents, with their missions and their limits (three occurrences for a pattern, no comparison of individuals, simulations that state their assumptions, agents propose and humans decide).
 - The three loops: Decision Moment (`/coda:decide`), Pattern Review (`/coda:patterns`), Intent Sync (`/coda:sync`).
+- The knowledge graph, with the same relation types (similar became `related`) and the same entity types except one: there is no `person` entity. The graph maps what the team works on, not who did what.
+- The rule that a constraint or risk met three times is a candidate pattern.
 - The intent, with one in force at a time and organisation and team levels.
 - The ethical charter's non-negotiables, as the frame of `/coda:audit`.
 
@@ -40,6 +43,7 @@ CODA goes where the work already is. The coding agent a team uses every day is t
 - The comparison table with Scrum and Kanban.
 - The 5-to-50-people target.
 - Numeric scores computed by a model (alignment score, health score). CODA reports counts from the journal and leaves judgement to humans.
+- Semantic similarity by embeddings. Nothing computes that two decisions are close in meaning; the memory agent judges it when asked, and the human confirms the `related` link.
 - Multi-tenant hosting. A shared cognition service across teams may return for the company level; it is not part of 0.1.
 
 ## Moving existing data

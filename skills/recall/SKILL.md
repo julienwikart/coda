@@ -9,6 +9,8 @@ The CODA command line is `node "${CLAUDE_PLUGIN_ROOT}/scripts/coda.mjs"`, writte
 
 Delegate the question to the `coda:memory` agent, passing the user's words and any names of systems, files or people role-holders that could help the search. If the question is about what actually happened rather than what was decided ("when did verification start failing?", "how often were agents stopped by the guard?"), also query the journal: `coda journal query --since 30d --type <prefix>` with prefixes such as `verify`, `guard`, `run`, `decision`, `autonomy`.
 
+When the question is about a thing rather than a topic ("everything that touches the billing API"), start from the graph: `coda graph --around <entity>`.
+
 Answer the question directly, citing decision ids so the human can open the records. If the memory holds nothing, say so — and if the subject clearly deserves a decision, suggest `/coda:decide`.
 
 Record the use: `coda journal add memory.recall --data '{"query": "<short form of the question>", "hits": <number of records found>}'`. This is how the team sees whether its memory is actually reused.

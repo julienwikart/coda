@@ -45,6 +45,7 @@ Trois étages, chacun ne parlant qu'à son voisin : les humains portent l'intent
 | `/coda:deliver <demande>` | Construire : mémoire → plan et briefs → builders → vérification. |
 | `/coda:decide <question>` | Un choix coûteux à défaire : mémoire, simulation, un humain décide, c'est enregistré. |
 | `/coda:recall <question>` | « Qu'avions-nous décidé sur… ? » |
+| `/coda:graph <sujet>` | Ce qui touche un composant, une contrainte, un risque ; comment les décisions dépendent les unes des autres ou se contredisent. |
 | `/coda:patterns` | Ce qui se répète ; ignorer, corriger ou expérimenter. Remplace la rétrospective. |
 | `/coda:sync` | Sert-on toujours l'intention ? Remplace le point d'avancement. |
 | `/coda:audit` | Les éléments pour l'Ethical Guardian. |

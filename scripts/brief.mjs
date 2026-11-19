@@ -1,4 +1,5 @@
 // The cognitive brief: what every session and every execution agent starts from.
+import { buildGraph } from './graph.mjs';
 import { intentSummary, listRecords, readEvents, loadVerified, fingerprint, verifyJournal, LEVELS } from './lib.mjs';
 
 export const LEVEL_TEXT = {
@@ -46,7 +47,7 @@ export function brief(root, cfg) {
     '- Before a choice that is hard to reverse, check the decisions above; if it contradicts one, say so and run `/coda:decide` rather than deciding silently.',
     '- A decision is only made by a human. Record it with `/coda:decide`; do not write decision records on your own initiative.',
     `- Verification is ${cfg.verify.commands.length ? `enforced when you finish: ${cfg.verify.commands.map((c) => `\`${c}\``).join(', ')}` : 'not configured yet (`/coda:init` sets it)'}.`,
-    '- Skills: /coda:intent, /coda:decide, /coda:recall, /coda:deliver, /coda:patterns, /coda:sync, /coda:audit, /coda:autonomy, /coda:status.');
+    '- Skills: /coda:intent, /coda:decide, /coda:recall, /coda:graph, /coda:deliver, /coda:patterns, /coda:sync, /coda:audit, /coda:autonomy, /coda:status.');
   return lines.join('\n');
 }
 
@@ -68,6 +69,7 @@ export function status(root, cfg) {
     intent: Boolean(intentSummary(root)?.purpose),
     decisions: { total: listRecords(root, 'decisions').length, inForce: activeDecisions(root).length },
     patterns: { total: listRecords(root, 'patterns').length, open: openPatterns(root).length },
+    graph: (() => { const g = buildGraph(root); return { entities: g.entities.length, links: g.edges.filter((e) => e.type !== 'mentions').length, openContradictions: g.contradictions, recurring: g.recurring, problems: g.problems.length }; })(),
     verification: { commands: cfg.verify.commands, requireReview: cfg.verify.requireReview, currentTreeVerified: fp !== null && verified.fp === fp, currentTreeReviewed: fp !== null && verified.reviewFp === fp },
     journal: { events: j.count, streams: j.files, intact: j.problems.length === 0, problems: j.problems.slice(0, 5) },
     last30Days: {
