@@ -42,9 +42,9 @@ test('globs', () => {
 });
 
 test('read-only command detection is conservative', () => {
-  for (const c of ['ls -la', 'git status && git diff HEAD', 'cat a | grep b', 'git log --oneline 2>/dev/null', 'cat .coda/decisions/D-0001*; echo; git branch -a; ls .coda/patterns', "find src -type f | grep -v x | xargs ls -la", 'git branch --show-current'])
+  for (const c of ['ls -la', 'git status && git diff HEAD', 'cat a | grep b', 'git log --oneline 2>/dev/null', 'cat .coda/decisions/D-0001*; echo; git branch -a; ls .coda/patterns', "find src -type f | grep -v x | xargs ls -la", 'git branch --show-current', 'for f in a b; do echo $f; cat $f; done', 'if test -f a; then cat a; fi'])
     assert.ok(isReadOnlyCommand(c), c);
-  for (const c of ['rm -rf x', 'echo hi > file', 'git commit -m x', 'cat a && npm test', 'ls $(rm x)', 'find . -delete', 'git -C . push', 'sed -i s/a/b/ f', 'git branch -D main', 'git branch new-branch', 'find . | xargs rm', 'ls | xargs -n1 git push', 'ls | xargs'])
+  for (const c of ['rm -rf x', 'echo hi > file', 'git commit -m x', 'cat a && npm test', 'ls $(rm x)', 'find . -delete', 'git -C . push', 'sed -i s/a/b/ f', 'git branch -D main', 'git branch new-branch', 'find . | xargs rm', 'ls | xargs -n1 git push', 'ls | xargs', 'for f in a b; do rm $f; done', 'if test -f a; then rm a; fi'])
     assert.ok(!isReadOnlyCommand(c), c);
 });
 
@@ -259,4 +259,40 @@ test('the journal cannot say a decision was recorded when its record does not ex
   assert.equal(spawnSync('node', [CLI, 'journal', 'add', 'decision.recorded'], { cwd: root }).status, 1, 'id required');
   fs.writeFileSync(path.join(root, '.coda/decisions/D-0001-x.md'), '---\nid: D-0001\nstatus: decided\n---\n# D-0001 X\n');
   assert.equal(add().status, 0);
+});
+
+test('init writes the team, roles and perimeter in one command; bounded at init needs a named human', () => {
+  const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'coda-test-')));
+  execFileSync('git', ['init', '-q'], { cwd: root });
+  const init = (...a) => spawnSync('node', [CLI, 'init', ...a], { cwd: root, encoding: 'utf8' });
+  assert.equal(init('--level', 'bounded', '--verify', 'true').status, 1);
+  assert.equal(init('--human', 'Ana=boss').status, 1);
+  const r = init('--level', 'bounded', '--by', 'Karim', '--verify', 'true', '--human', 'Ana=intent-architect,sovereign-maker', '--human', 'Lou=ethical-guardian,external', '--write', 'src/**', '--protect', 'migrations/**');
+  assert.equal(r.status, 0, r.stderr);
+  const cfg = loadConfig(root);
+  assert.deepEqual(cfg.team.humans[1], { name: 'Lou', roles: ['ethical-guardian'], external: true });
+  assert.deepEqual(cfg.autonomy.perimeter.write, ['src/**']);
+  assert.ok(cfg.autonomy.perimeter.protected.includes('migrations/**') && cfg.autonomy.perimeter.protected.includes('.env*'));
+  assert.equal(readEvents(root)[0].actor, 'human:Karim');
+});
+
+test('a delivery\'s verified state comes from the harness, not from the caller', () => {
+  const root = project({ verify: ['true'] });
+  fs.writeFileSync(path.join(root, 'f.txt'), '1');
+  const add = () => execFileSync('node', [CLI, 'journal', 'add', 'delivery.completed', '--data', '{"request":"x","verified":true,"reviewed":true}'], { cwd: root });
+  add();
+  execFileSync('node', [CLI, 'verify'], { cwd: root });
+  add();
+  const [a, b] = readEvents(root).filter((e) => e.type === 'delivery.completed');
+  assert.deepEqual([a.data.verified, a.data.reviewed], [false, false]);
+  assert.deepEqual([b.data.verified, b.data.reviewed], [true, false]);
+});
+
+test('coda verify does not re-run on an unchanged tree unless forced; --help never runs anything', () => {
+  const root = project({ verify: ['true'] });
+  const run = (...a) => execFileSync('node', [CLI, 'verify', ...a], { cwd: root, encoding: 'utf8' });
+  assert.match(run('--help'), /coda init/);
+  assert.equal(readEvents(root, { types: ['verify'] }).length, 0);
+  run(); assert.match(run(), /already verified/); run('--force');
+  assert.equal(readEvents(root, { types: ['verify'] }).length, 2);
 });

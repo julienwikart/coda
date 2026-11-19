@@ -16,13 +16,15 @@ const RESERVED = ['session', 'run', 'tool', 'guard', 'verify', 'review', 'autono
 
 const USAGE = `coda — cognitive orchestration for delivery agents
 
-  coda init [--name <team>] [--level observed|supervised|bounded] [--verify "<cmd>"]...
+  coda init [--name <team>] [--level observed|supervised|bounded] [--by <human>]
+            [--verify "<cmd>"]... [--human "<name>=<role>,<role>[,external]"]...
+            [--write "<glob>"]... [--protect "<glob>"]...
   coda brief                         the context every session starts from
   coda status                        facts about the team's state, as JSON
   coda next-id decisions|patterns [title]
   coda journal add <type> [--data '<json>'] [--actor <who>]
   coda journal tail [n] | query [--since <iso|Nd>] [--type <prefix>] | verify
-  coda verify                        run the verification commands now
+  coda verify [--force]              run the verification commands (skipped if this exact state already passed)
   coda level <level> --by <human> --reason "<why>"
   coda doctor                        check that the harness is really in place
 `;
@@ -39,6 +41,8 @@ function parseArgs(argv) {
   }
   return { pos, opt };
 }
+
+const list = (v) => [].concat(v ?? []).filter((x) => x !== true).map(String);
 
 function fail(msg) { process.stderr.write(`coda: ${msg}\n`); process.exit(1); }
 
@@ -92,12 +96,24 @@ function init(opt) {
   cfg.team.name = opt.name === true ? '' : opt.name || path.basename(root);
   cfg.autonomy.level = level;
   cfg.autonomy.since = new Date().toISOString();
-  cfg.verify.commands = [].concat(opt.verify || []).filter((v) => v !== true);
+  cfg.verify.commands = list(opt.verify);
+  if (level === 'bounded' && (!cfg.verify.commands.length || !opt.by || opt.by === true))
+    fail('starting at bounded autonomy needs --verify and --by <human>: it is a delegation a named human takes responsibility for.');
+  for (const h of list(opt.human)) {
+    const [name, spec = ''] = h.split('=');
+    const parts = spec.split(',').map((x) => x.trim()).filter(Boolean);
+    const roles = parts.filter((x) => x !== 'external');
+    const unknown = roles.filter((r) => !ROLES.includes(r));
+    if (!name.trim() || unknown.length) fail(`--human "${h}": expected "<name>=<role>,<role>[,external]" with roles among ${ROLES.join(', ')}.`);
+    cfg.team.humans.push({ name: name.trim(), roles, ...(parts.includes('external') ? { external: true } : {}) });
+  }
+  if (list(opt.write).length) cfg.autonomy.perimeter.write = list(opt.write);
+  cfg.autonomy.perimeter.protected = [...new Set([...cfg.autonomy.perimeter.protected, ...list(opt.protect)])];
   saveConfig(root, cfg);
   fs.writeFileSync(codaPath(root, 'intent.md'), INTENT_TEMPLATE);
   fs.writeFileSync(codaPath(root, '.gitignore'), '.state/\n*.lock\n');
   for (const d of ['decisions', 'patterns', 'audits']) fs.writeFileSync(codaPath(root, d, '.gitkeep'), '');
-  appendEvent(root, { type: 'coda.initialized', session: cliSession(root), data: { level, verify: cfg.verify.commands } });
+  appendEvent(root, { type: 'coda.initialized', session: cliSession(root), actor: opt.by && opt.by !== true ? `human:${opt.by}` : 'harness', data: { level, verify: cfg.verify.commands, humans: cfg.team.humans.length } });
   console.log(`Initialised ${CODA_DIR}/ — autonomy level: ${level}; verification: ${cfg.verify.commands.join(', ') || 'none yet'}.`);
 }
 
@@ -115,6 +131,11 @@ function journal(root, pos, opt) {
       if (!data.id) fail(`${type} needs the record id in --data, e.g. '{"id":"${kind === 'decisions' ? 'D' : 'P'}-0001"}'.`);
       if (!listRecords(root, kind).some((r) => r.id === data.id)) fail(`no record with id ${data.id} in ${CODA_DIR}/${kind}/ — write the record first; if writing it was refused, nothing was recorded and the human should be told.`);
     }
+    // Whether a delivery is verified is a fact the harness knows; it is not taken from the caller.
+    if (type === 'delivery.completed') {
+      const fp = fingerprint(root); const v = loadVerified(root);
+      data = { ...data, verified: fp !== null && v.fp === fp, reviewed: fp !== null && v.reviewFp === fp, fingerprint: fp };
+    }
     const e = appendEvent(root, { type, actor: opt.actor && opt.actor !== true ? String(opt.actor) : 'agent:main', session: cliSession(root, opt.session !== true && opt.session), data });
     console.log(`${e.ts} ${e.type} #${e.seq}`);
   } else if (sub === 'tail' || sub === 'query') {
@@ -131,10 +152,14 @@ function journal(root, pos, opt) {
   } else fail('journal: use add, tail, query or verify.');
 }
 
-function verify(root) {
+function verify(root, opt) {
   const cfg = loadConfig(root);
   if (!cfg.verify.commands.length) fail('no verification commands configured (.coda/config.json → verify.commands).');
   const fp = fingerprint(root);
+  if (!opt.force && fp && loadVerified(root).fp === fp) {
+    console.log(`PASS  already verified at this exact state of the tree (${fp}). Nothing changed since; use --force to run again.`);
+    return;
+  }
   const res = runVerify(root, cfg);
   appendEvent(root, { type: res.ok ? 'verify.passed' : 'verify.failed', session: cliSession(root), data: { fingerprint: fp, results: res.results.map(({ command, ok, code, ms }) => ({ command, ok, code, ms })) } });
   // Show the end of the output on a pass too: a green run that executed nothing must be visible.
@@ -183,6 +208,7 @@ function doctor(root) {
 
 const { pos, opt } = parseArgs(process.argv.slice(2));
 const cmd = pos.shift();
+if (opt.help) { process.stdout.write(USAGE); process.exit(0); }
 switch (cmd) {
   case 'init': init(opt); break;
   case 'brief': { const root = needRoot(); console.log(brief(root, loadConfig(root))); break; }
@@ -197,7 +223,7 @@ switch (cmd) {
   }
   case 'list': { const root = needRoot(); for (const r of listRecords(root, pos[0] || 'decisions')) console.log(`${r.id}\t${r.meta.status || ''}\t${r.meta.date || ''}\t${r.title}\t${r.file}`); break; }
   case 'journal': journal(needRoot(), pos, opt); break;
-  case 'verify': verify(needRoot()); break;
+  case 'verify': verify(needRoot(), opt); break;
   case 'level': level(needRoot(), pos, opt); break;
   case 'doctor': doctor(needRoot()); break;
   default: process.stdout.write(USAGE); process.exit(cmd && cmd !== 'help' ? 1 : 0);
