@@ -2,6 +2,7 @@
 // Shared by the hook entry point (scripts/hook.mjs) and the CLI (bin/coda).
 import fs from 'node:fs';
 import path from 'node:path';
+import os from 'node:os';
 import crypto from 'node:crypto';
 import { execFileSync, spawnSync } from 'node:child_process';
 
@@ -169,7 +170,7 @@ export function lineHash(line) {
 }
 
 export function streamId(session) {
-  return String(session || 'local').replace(/[^A-Za-z0-9_-]/g, '').slice(0, 12) || 'local';
+  return String(session || 'local').replace(/[^A-Za-z0-9_-]/g, '').slice(0, 16) || 'local';
 }
 
 /**
@@ -264,6 +265,28 @@ export function fingerprint(root) {
 }
 
 // ---------------------------------------------------------------- local state
+
+// The Bash tool does not tell a command which session launched it. The hooks
+// note the acting session just before each tool call, so that CLI events land
+// in that session's stream instead of a shared file teammates would conflict on.
+export function noteSession(root, session) {
+  try {
+    fs.mkdirSync(codaPath(root, '.state'), { recursive: true });
+    fs.writeFileSync(codaPath(root, '.state', 'current.json'), JSON.stringify({ session, ts: Date.now() }));
+  } catch { /* best effort */ }
+}
+
+/** Stream for an event written from the command line. */
+export function cliSession(root, explicit) {
+  if (explicit) return explicit;
+  try {
+    const cur = JSON.parse(fs.readFileSync(codaPath(root, '.state', 'current.json'), 'utf8'));
+    if (cur.session && Date.now() - cur.ts < 10 * 60 * 1000) return cur.session;
+  } catch { /* no live session */ }
+  // A human at a terminal: one stream per machine user and day.
+  const who = crypto.createHash('sha256').update(`${os.hostname()}:${os.userInfo().username}`).digest('hex').slice(0, 6);
+  return `cli-${who}-${new Date().toISOString().slice(5, 10).replace('-', '')}`;
+}
 
 // Machine-local, never committed: verification baselines and block counters.
 export function loadState(root, session) {

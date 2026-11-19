@@ -30,7 +30,7 @@ At every level, cognitive agents cannot write outside `.coda/` or run commands t
 **G4 — Orchestration by floors.** Cognitive agents produce plans and briefs; execution agents receive a brief and deliver; a builder cannot be its own verifier.
 *Adapter:* agent definitions with restricted tools, plus G2 keyed on the agent's identity. The sequencing itself (`/coda:deliver`) is a skill, so it is guidance; what is guaranteed is what each floor *cannot* do.
 
-**G5 — Observability.** Every session, agent run, write, acting command, guard decision and verification result is appended to `.coda/journal/`. Events are never edited. Each stream is hash-chained, so an edit or deletion is detectable (`coda journal verify`). Events of the families `session`, `run`, `tool`, `guard`, `verify`, `review` and `autonomy` can only be written by the harness.
+**G5 — Observability.** Every session, agent run, write, acting command, guard decision and verification result is appended to `.coda/journal/`. Events are never edited. Each stream is hash-chained, so an edit or deletion is detectable (`coda journal verify`). Events of the families `session`, `run`, `tool`, `guard`, `verify`, `review` and `autonomy` can only be written by the harness. `decision.recorded` and `pattern.reviewed` are refused unless the record they name exists.
 *Adapter:* post-tool-use, subagent and session hooks; the guard denies any other write to the journal.
 
 ## What the adapter does not guarantee
@@ -51,7 +51,7 @@ One JSON object per line, in `.coda/journal/<YYYY-MM>/<session>.jsonl`:
 {"v":1,"ts":"2026-11-19T13:36:46.101Z","seq":3,"type":"guard.denied","actor":"agent:builder","session":"c38d5469-60a","data":{"tool":"Write","target":".env","level":"bounded","reason":"…"},"prev":"7919e90dff782d82"}
 ```
 
-`prev` is the first 16 hex characters of the SHA-256 of the previous line in the same stream. One stream per session means teammates never produce merge conflicts.
+`prev` is the first 16 hex characters of the SHA-256 of the previous line in the same stream. One stream per session means teammates never produce merge conflicts. Events written from the command line join the stream of the session that issued them; from a plain terminal they go to a per-user, per-day `cli-…` stream.
 
 | Family | Events | Written by |
 |---|---|---|

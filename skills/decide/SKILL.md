@@ -67,4 +67,6 @@ When or on what signal this decision should be looked at again.
 
 If it supersedes an earlier decision, set that record's `status: superseded` and add a line pointing to the new one; change nothing else in it — the history stays as it was. Then `coda journal add decision.recorded --data '{"id": "D-0007", "type": "…", "maker": "<name>", "simulated": true}' --actor human:<name>`.
 
+The journal entry is refused if the record file does not exist. If writing the record was not approved, the decision is not in the team's memory: say so plainly rather than reporting it as recorded.
+
 Finish by saying what the decision changes for work in progress, if anything.

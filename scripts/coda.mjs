@@ -6,7 +6,7 @@ import path from 'node:path';
 import {
   findRoot, codaPath, loadConfig, saveConfig, appendEvent, readEvents, verifyJournal,
   nextId, slugify, listRecords, fingerprint, loadVerified, saveVerified, runVerify,
-  DEFAULT_CONFIG, LEVELS, ROLES, CODA_DIR, git,
+  DEFAULT_CONFIG, LEVELS, ROLES, CODA_DIR, git, cliSession,
 } from './lib.mjs';
 import { brief, status } from './brief.mjs';
 
@@ -97,7 +97,7 @@ function init(opt) {
   fs.writeFileSync(codaPath(root, 'intent.md'), INTENT_TEMPLATE);
   fs.writeFileSync(codaPath(root, '.gitignore'), '.state/\n*.lock\n');
   for (const d of ['decisions', 'patterns', 'audits']) fs.writeFileSync(codaPath(root, d, '.gitkeep'), '');
-  appendEvent(root, { type: 'coda.initialized', data: { level, verify: cfg.verify.commands } });
+  appendEvent(root, { type: 'coda.initialized', session: cliSession(root), data: { level, verify: cfg.verify.commands } });
   console.log(`Initialised ${CODA_DIR}/ — autonomy level: ${level}; verification: ${cfg.verify.commands.join(', ') || 'none yet'}.`);
 }
 
@@ -109,7 +109,13 @@ function journal(root, pos, opt) {
     if (RESERVED.includes(type.split('.')[0])) fail(`"${type.split('.')[0]}.*" events are written by the harness only.`);
     let data = {};
     if (opt.data && opt.data !== true) { try { data = JSON.parse(opt.data); } catch { fail('--data is not valid JSON.'); } }
-    const e = appendEvent(root, { type, actor: opt.actor && opt.actor !== true ? String(opt.actor) : 'agent:main', session: process.env.CLAUDE_SESSION_ID || opt.session, data });
+    // The journal must not say a record exists when it does not.
+    const kind = { 'decision.recorded': 'decisions', 'pattern.reviewed': 'patterns' }[type];
+    if (kind) {
+      if (!data.id) fail(`${type} needs the record id in --data, e.g. '{"id":"${kind === 'decisions' ? 'D' : 'P'}-0001"}'.`);
+      if (!listRecords(root, kind).some((r) => r.id === data.id)) fail(`no record with id ${data.id} in ${CODA_DIR}/${kind}/ — write the record first; if writing it was refused, nothing was recorded and the human should be told.`);
+    }
+    const e = appendEvent(root, { type, actor: opt.actor && opt.actor !== true ? String(opt.actor) : 'agent:main', session: cliSession(root, opt.session !== true && opt.session), data });
     console.log(`${e.ts} ${e.type} #${e.seq}`);
   } else if (sub === 'tail' || sub === 'query') {
     let since = opt.since && opt.since !== true ? String(opt.since) : undefined;
@@ -130,8 +136,9 @@ function verify(root) {
   if (!cfg.verify.commands.length) fail('no verification commands configured (.coda/config.json → verify.commands).');
   const fp = fingerprint(root);
   const res = runVerify(root, cfg);
-  appendEvent(root, { type: res.ok ? 'verify.passed' : 'verify.failed', session: process.env.CLAUDE_SESSION_ID, data: { fingerprint: fp, results: res.results.map(({ command, ok, code, ms }) => ({ command, ok, code, ms })) } });
-  for (const r of res.results) console.log(`${r.ok ? 'PASS' : 'FAIL'}  ${r.command}  (${r.ms} ms)${r.ok ? '' : `\n${r.tail}`}`);
+  appendEvent(root, { type: res.ok ? 'verify.passed' : 'verify.failed', session: cliSession(root), data: { fingerprint: fp, results: res.results.map(({ command, ok, code, ms }) => ({ command, ok, code, ms })) } });
+  // Show the end of the output on a pass too: a green run that executed nothing must be visible.
+  for (const r of res.results) console.log(`${r.ok ? 'PASS' : 'FAIL'}  ${r.command}  (${r.ms} ms)\n${r.ok ? r.tail.split('\n').slice(-8).join('\n') : r.tail}`.trimEnd());
   if (res.ok && fp) saveVerified(root, { ...loadVerified(root), fp });
   process.exit(res.ok ? 0 : 1);
 }
@@ -149,7 +156,7 @@ function level(root, pos, opt) {
   cfg.autonomy.level = to;
   cfg.autonomy.since = new Date().toISOString();
   saveConfig(root, cfg);
-  appendEvent(root, { type: 'autonomy.changed', actor: `human:${opt.by}`, session: process.env.CLAUDE_SESSION_ID, data: { from, to, reason: String(opt.reason) } });
+  appendEvent(root, { type: 'autonomy.changed', actor: `human:${opt.by}`, session: cliSession(root), data: { from, to, reason: String(opt.reason) } });
   console.log(`Autonomy level: ${from} → ${to} (decided by ${opt.by}).`);
 }
 
