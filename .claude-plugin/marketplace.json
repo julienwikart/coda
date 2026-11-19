@@ -1,0 +1,13 @@
+{
+  "name": "coda",
+  "owner": { "name": "Julien Wikart" },
+  "description": "CODA — cognitive orchestration for delivery agents.",
+  "plugins": [
+    {
+      "name": "coda",
+      "source": "./",
+      "description": "Run a product with two or three humans: a shared intent, cognitive agents that steer, execution agents that deliver.",
+      "category": "productivity"
+    }
+  ]
+}
