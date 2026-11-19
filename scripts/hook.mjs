@@ -59,6 +59,10 @@ export function isReadOnlyCommand(command) {
   if (/[<>`]|\$\(/.test(c)) return false;
   for (const seg of c.split(/&&|\|\||[;|\n]/)) {
     const words = seg.trim().split(/\s+/).filter(Boolean);
+    // Shell control flow: a loop or a test over read-only commands is still read-only.
+    if (words[0] === 'for' && words[2] === 'in') continue;
+    while (words.length && ['do', 'then', 'else', 'elif', 'if', 'while', '!'].includes(words[0])) words.shift();
+    if (words.length === 1 && ['done', 'fi'].includes(words[0])) continue;
     while (words.length && /^[A-Za-z_][A-Za-z0-9_]*=/.test(words[0])) words.shift();
     if (!words.length) continue;
     const [cmd, sub] = words;
@@ -125,7 +129,7 @@ export function decide(root, cfg, input) {
     if (isCodaBookkeeping(cmd)) return { decision: 'allow', reason: 'CODA bookkeeping (read, journal append or configured verification).' };
     if (readOnly) return { decision: null };
     if (/coda\.mjs["']?\s+level\b/.test(cmd)) return { decision: 'ask', reason: 'Changing the autonomy level is a human decision.' };
-    if (cognitive) return { decision: 'deny', reason: `Cognitive agents (${actor.slice(6)}) only read: they cannot run commands that act on the project.` };
+    if (cognitive) return { decision: 'deny', reason: `Cognitive agents (${actor.slice(6)}) only read: they cannot run commands that act on the project. Use Read, Grep and Glob, or plain read-only commands (cat, ls, grep, git log, git diff).` };
     if (level === 'observed') return { decision: 'deny', reason: 'Autonomy level is "observed": agents propose commands, humans run them.' };
     if (level === 'supervised') return { decision: 'ask', reason: 'Supervised execution: a human approves each command that acts on the project.' };
     for (const part of cmd.split(/&&|\|\||[;\n]/)) {

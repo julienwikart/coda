@@ -24,15 +24,19 @@ Ask, in as few rounds as possible, proposing what you found:
 
 ## 3. Write it down
 
-Run `coda init --name "<team>" --level <level> --verify "<cmd>" [--verify "<cmd>"]`. Then edit `.coda/config.json` to add the humans and adjust the perimeter — the harness will ask the human to approve that edit, which is intended: this file defines what agents are allowed to do.
+One command writes everything, so the human approves the whole set-up once:
 
-```json
-"team": { "name": "…", "humans": [
-  { "name": "Ana", "roles": ["intent-architect", "sovereign-maker"] },
-  { "name": "Karim", "roles": ["system-orchestrator", "sovereign-maker"] },
-  { "name": "Lou", "roles": ["ethical-guardian"], "external": true }
-] }
 ```
+coda init --name "<team>" --level <level> --by "<who decided>" \
+  --verify "<cmd>" --verify "<cmd>" \
+  --human "Ana=intent-architect,sovereign-maker" \
+  --human "Karim=system-orchestrator,sovereign-maker" \
+  --human "Lou=ethical-guardian,external" \
+  --write "src/**" --write "tests/**" \
+  --protect "migrations/**"
+```
+
+`--write` replaces the default writable perimeter; `--protect` adds to the paths protected at every level (secrets, CI and infrastructure are protected by default). `external` marks a human outside the team. Later changes are made in `.coda/config.json`; the harness asks a human to approve each of them, because that file defines what agents are allowed to do.
 
 ## 4. Hand over
 

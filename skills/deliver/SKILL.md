@@ -33,4 +33,4 @@ Run `coda verify`, then delegate a review to the `coda:verifier` agent with the 
 
 Tell the human what was delivered and what proves it (verification output, the verifier's verdict), what was not done and why, what now needs a human (a push, a protected file, a deploy), and anything the builders noticed outside their packages. If the work embodied a choice the team will want to remember, suggest recording it with `/coda:decide`.
 
-Record the delivery once, when it is finished or given up, not at each attempt: `coda journal add delivery.completed --data '{"request": "<one line>", "packages": <n>, "verified": true|false}'`.
+Record the delivery once, when it is finished or given up, not at each attempt: `coda journal add delivery.completed --data '{"request": "<one line>", "packages": <n>}'`. The harness adds whether the delivered state passed verification and review; you cannot assert it.
