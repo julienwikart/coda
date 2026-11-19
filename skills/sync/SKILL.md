@@ -1,0 +1,24 @@
+---
+name: sync
+description: Run an intent sync — check whether what the team actually decided and delivered over the period still serves its intent, and surface drift. Use weekly, or when the user asks whether the team is still aligned or on course.
+---
+
+# Intent sync
+
+A short, regular check that the team is still doing what it said it was for. It replaces the status meeting: the facts are already in the memory and the journal.
+
+The CODA command line is `node "${CLAUDE_PLUGIN_ROOT}/scripts/coda.mjs"`, written `coda` below. Run it from the project root.
+
+Gather, for the period (the last 7 days unless told otherwise): the intent (`.coda/intent.md`), the decisions recorded in the period (`coda list decisions`, then read them), the journal's account of what was delivered and how it went (`coda journal query --since 7d`: deliveries, verification results, guard events, unresolved verifications), open patterns, and `coda status`.
+
+Then give the humans a brief they can read in two minutes:
+
+- **Alignment.** For each objective of the intent: what in this period served it, and whether nothing did. Decisions or deliveries that serve no objective are named — they are either drift or a sign the intent is missing something.
+- **Drift.** Anything that moved against a constraint or into what the intent declares out of scope. Quote the constraint and the evidence. If there is none, say there is none.
+- **Health of the system.** Verification failing or left unresolved, agents repeatedly stopped by the guard on the same thing, decisions taken without consulting the memory, decisions marked `decided` that have not moved.
+- **The regrowth signal.** State the signal the intent names and what the evidence says about it. If the intent names none, say that this is the gap to close first.
+- **One focus** for the coming period, as a proposal.
+
+Do not compute an alignment score: a number here would look like measurement and is not one. Separate what the records show from what you infer.
+
+The humans decide what follows — usually nothing, sometimes a `/coda:decide` or a revision of the intent. Record the sync: `coda journal add intent.sync --data '{"period": "7d", "drift": true|false, "focus": "<one line>"}'`.
