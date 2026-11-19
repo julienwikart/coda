@@ -42,9 +42,9 @@ test('globs', () => {
 });
 
 test('read-only command detection is conservative', () => {
-  for (const c of ['ls -la', 'git status && git diff HEAD', 'cat a | grep b', 'git log --oneline 2>/dev/null'])
+  for (const c of ['ls -la', 'git status && git diff HEAD', 'cat a | grep b', 'git log --oneline 2>/dev/null', 'cat .coda/decisions/D-0001*; echo; git branch -a; ls .coda/patterns', "find src -type f | grep -v x | xargs ls -la", 'git branch --show-current'])
     assert.ok(isReadOnlyCommand(c), c);
-  for (const c of ['rm -rf x', 'echo hi > file', 'git commit -m x', 'cat a && npm test', 'ls $(rm x)', 'find . -delete', 'git -C . push', 'sed -i s/a/b/ f'])
+  for (const c of ['rm -rf x', 'echo hi > file', 'git commit -m x', 'cat a && npm test', 'ls $(rm x)', 'find . -delete', 'git -C . push', 'sed -i s/a/b/ f', 'git branch -D main', 'git branch new-branch', 'find . | xargs rm', 'ls | xargs -n1 git push', 'ls | xargs'])
     assert.ok(!isReadOnlyCommand(c), c);
 });
 
@@ -143,7 +143,7 @@ test('the CLI cannot forge harness events', () => {
     const r = spawnSync('node', [CLI, 'journal', 'add', type], { cwd: root, encoding: 'utf8' });
     assert.equal(r.status, 1, type);
   }
-  assert.equal(spawnSync('node', [CLI, 'journal', 'add', 'decision.recorded', '--data', '{"id":"D-0001"}'], { cwd: root }).status, 0);
+  assert.equal(spawnSync('node', [CLI, 'journal', 'add', 'intent.sync', '--data', '{"drift":false}'], { cwd: root }).status, 0);
 });
 
 test('level change needs a named human, a reason, and a verification loop', () => {
@@ -228,9 +228,35 @@ test('fingerprint ignores .coda/ and tracks content', () => {
 test('CODA bookkeeping runs without a prompt; look-alikes and chained commands do not', () => {
   const root = project({ level: 'observed' });
   assert.equal(d(root, bash(`node "${CLI}" status`)), 'allow');
-  assert.equal(d(root, bash(`node "${CLI}" journal add decision.recorded --data '{"id":"D-0001"}'`)), 'allow');
+  assert.equal(d(root, bash(`node "${CLI}" journal add memory.recall --data '{"hits":1}'`)), 'allow');
   assert.ok(!isCodaBookkeeping(`node "${CLI}" status && rm -rf src`));
   assert.ok(!isCodaBookkeeping(`node "${CLI}" level bounded --by x --reason y`));
   assert.ok(!isCodaBookkeeping('node scripts/coda.mjs status'), 'a project-local script named coda.mjs is not the CLI');
   assert.equal(d(root, bash('node scripts/coda.mjs status')), 'deny');
+});
+
+test('CLI events land in the acting session\'s stream, never in a file shared between teammates', () => {
+  const root = project();
+  hook(root, { hook_event_name: 'SessionStart', session_id: 'sess-abc' });
+  execFileSync('node', [CLI, 'journal', 'add', 'memory.recall'], { cwd: root });
+  const mine = readEvents(root).filter((e) => e.type === 'memory.recall');
+  assert.equal(mine[0].session, 'sess-abc');
+  fs.rmSync(path.join(root, '.coda/.state/current.json'));
+  execFileSync('node', [CLI, 'journal', 'add', 'memory.recall'], { cwd: root });
+  assert.match(readEvents(root).filter((e) => e.type === 'memory.recall')[1].session, /^cli-[0-9a-f]{6}-\d{4}$/);
+  assert.deepEqual(verifyJournal(root).problems, []);
+});
+
+test('coda verify shows the end of the output on a pass', () => {
+  const root = project({ verify: ['echo "tests 0"'] });
+  assert.match(execFileSync('node', [CLI, 'verify'], { cwd: root, encoding: 'utf8' }), /PASS.*\n.*tests 0/);
+});
+
+test('the journal cannot say a decision was recorded when its record does not exist', () => {
+  const root = project();
+  const add = () => spawnSync('node', [CLI, 'journal', 'add', 'decision.recorded', '--data', '{"id":"D-0001"}'], { cwd: root, encoding: 'utf8' });
+  assert.equal(add().status, 1);
+  assert.equal(spawnSync('node', [CLI, 'journal', 'add', 'decision.recorded'], { cwd: root }).status, 1, 'id required');
+  fs.writeFileSync(path.join(root, '.coda/decisions/D-0001-x.md'), '---\nid: D-0001\nstatus: decided\n---\n# D-0001 X\n');
+  assert.equal(add().status, 0);
 });

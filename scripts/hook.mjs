@@ -9,7 +9,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   findRoot, loadConfig, appendEvent, relPath, matchAny, matchCommand, redact,
-  fingerprint, loadState, saveState, loadVerified, saveVerified, runVerify,
+  fingerprint, loadState, saveState, loadVerified, saveVerified, runVerify, noteSession,
   COGNITIVE_AGENTS, CODA_DIR,
 } from './lib.mjs';
 import { brief } from './brief.mjs';
@@ -63,8 +63,14 @@ export function isReadOnlyCommand(command) {
     if (!words.length) continue;
     const [cmd, sub] = words;
     if (cmd === 'git') {
-      const first = words.slice(1).find((w) => !w.startsWith('-'));
-      if (!GIT_READ_ONLY.has(first)) return false;
+      const rest = words.slice(1);
+      const first = rest.find((w) => !w.startsWith('-'));
+      // `git branch` only lists when it is given flags and no name.
+      const listing = first === 'branch' && rest.filter((w) => w !== 'branch').every((w) => /^(-a|-r|-v|-vv|--all|--remotes|--list|--show-current|--no-color)$/.test(w));
+      if (!GIT_READ_ONLY.has(first) && !listing) return false;
+    } else if (cmd === 'xargs') {
+      const target = words.slice(1).find((w) => !w.startsWith('-') && !/^\d+$/.test(w));
+      if (!target || target === 'git' || target === 'find' || target === 'xargs' || !READ_ONLY.has(target)) return false;
     } else if (cmd === 'find') {
       if (words.some((w) => ['-delete', '-exec', '-execdir', '-ok', '-fprint', '-fprintf'].includes(w))) return false;
     } else if (cmd === 'node' && isOwnCli(sub)) {
@@ -224,6 +230,7 @@ function main() {
   if (!handler) return;
   const cfg = loadConfig(root);
   try {
+    if (input.session_id) noteSession(root, input.session_id);
     handler(root, cfg, input);
   } catch (e) {
     // The guard fails closed, everything else fails open.
