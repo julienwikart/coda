@@ -42,9 +42,9 @@ test('globs', () => {
 });
 
 test('read-only command detection is conservative', () => {
-  for (const c of ['ls -la', 'git status && git diff HEAD', 'cat a | grep b', 'git log --oneline 2>/dev/null', 'cat .coda/decisions/D-0001*; echo; git branch -a; ls .coda/patterns', "find src -type f | grep -v x | xargs ls -la", 'git branch --show-current', 'for f in a b; do echo $f; cat $f; done', 'if test -f a; then cat a; fi'])
+  for (const c of ['ls -la', 'git status && git diff HEAD', 'cat a | grep b', 'git log --oneline 2>/dev/null', 'cat .coda/decisions/D-0001*; echo; git branch -a; ls .coda/patterns', "find src -type f | grep -v x | xargs ls -la", 'git branch --show-current', 'for f in a b; do echo $f; cat $f; done', 'if test -f a; then cat a; fi', 'grep -rniE "discount|clamp; throw" .coda --include=*.md', "grep -E 'a|b' f | sort", 'git -C /tmp/x ls-files'])
     assert.ok(isReadOnlyCommand(c), c);
-  for (const c of ['rm -rf x', 'echo hi > file', 'git commit -m x', 'cat a && npm test', 'ls $(rm x)', 'find . -delete', 'git -C . push', 'sed -i s/a/b/ f', 'git branch -D main', 'git branch new-branch', 'find . | xargs rm', 'ls | xargs -n1 git push', 'ls | xargs', 'for f in a b; do rm $f; done', 'if test -f a; then rm a; fi'])
+  for (const c of ['rm -rf x', 'echo hi > file', 'git commit -m x', 'cat a && npm test', 'ls $(rm x)', 'find . -delete', 'git -C . push', 'sed -i s/a/b/ f', 'git branch -D main', 'git branch new-branch', 'find . | xargs rm', 'ls | xargs -n1 git push', 'ls | xargs', 'for f in a b; do rm $f; done', 'if test -f a; then rm a; fi', 'grep "a" f | xargs rm', 'echo "$(rm x)"', 'cat "a', 'git -C /tmp/x push', 'git -c core.pager=evil log', 'echo "x" > f'])
     assert.ok(!isReadOnlyCommand(c), c);
 });
 
@@ -295,4 +295,83 @@ test('coda verify does not re-run on an unchanged tree unless forced; --help nev
   assert.equal(readEvents(root, { types: ['verify'] }).length, 0);
   run(); assert.match(run(), /already verified/); run('--force');
   assert.equal(readEvents(root, { types: ['verify'] }).length, 2);
+});
+
+// ------------------------------------------------------------ knowledge graph
+import { buildGraph, neighbourhood, toMermaid, parseEntity } from '../scripts/graph.mjs';
+
+function record(root, kind, id, front, title = id) {
+  fs.writeFileSync(path.join(root, '.coda', kind, `${id}-x.md`), `---\nid: ${id}\n${front}\n---\n# ${id} ${title}\n`);
+}
+
+test('graph: derived from record frontmatter — entities, typed links, patterns', () => {
+  const root = project();
+  record(root, 'decisions', 'D-0001', 'status: superseded\nentities: [technology:Postgres, constraint:integer cents]', 'Use "floats" [old]');
+  record(root, 'decisions', 'D-0002', 'status: decided\nentities: [technology:postgres, risk:rounding]\nsupersedes: D-0001\ndepends-on: [D-0003]');
+  record(root, 'decisions', 'D-0003', 'status: decided\nentities: [component:billing-api]');
+  record(root, 'patterns', 'P-0001', 'status: detected\nentities: [risk:rounding]\ndecisions: [D-0002]');
+  const g = buildGraph(root);
+  assert.deepEqual(g.problems, []);
+  const pg = g.entities.find((e) => e.id === 'technology:postgres');
+  assert.deepEqual(pg.decisions, ['D-0001', 'D-0002'], 'names are normalised so the same thing is one node');
+  assert.ok(g.edges.some((e) => e.from === 'D-0002' && e.to === 'D-0001' && e.type === 'supersedes'));
+  assert.ok(g.edges.some((e) => e.from === 'D-0002' && e.to === 'D-0003' && e.type === 'depends-on'));
+  assert.ok(g.edges.some((e) => e.from === 'P-0001' && e.to === 'D-0002' && e.type === 'observed-in'));
+  const near = neighbourhood(g, 'postgres');
+  assert.deepEqual(near.nodes.map((n) => n.id).sort(), ['D-0001', 'D-0002', 'technology:postgres']);
+  assert.equal(neighbourhood(g, 'nothing-like-this'), null);
+  const m = toMermaid(g);
+  assert.match(m, /^graph LR/);
+  assert.ok(!/"[^"\n]*"[^"\n]*"[^"\n]*"\]/.test(m.split('\n').find((l) => l.includes('D_0001['))), 'quotes in titles are neutralised');
+  assert.match(m, /class D_0001 retired/);
+});
+
+test('graph: people are never entities', () => {
+  assert.match(parseEntity('person:Ana').error, /not who did what/);
+  const root = project();
+  record(root, 'decisions', 'D-0001', 'status: decided\nentities: [person:Ana, technology:redis]');
+  const g = buildGraph(root);
+  assert.ok(!g.nodes.some((n) => /ana/i.test(n.id)));
+  assert.ok(g.problems.some((p) => /people are not entities/.test(p)));
+});
+
+test('graph: --check reports dangling links, open contradictions and decisions outside the graph', () => {
+  const root = project();
+  record(root, 'decisions', 'D-0001', 'status: decided\nentities: [concept:pricing]\ncontradicts: [D-0002]\nrelated: [D-0099]');
+  record(root, 'decisions', 'D-0002', 'status: decided');
+  const g = buildGraph(root);
+  assert.deepEqual(g.contradictions, [{ between: ['D-0001', 'D-0002'] }]);
+  assert.ok(g.problems.some((p) => /D-0099, which has no record/.test(p)));
+  assert.ok(g.problems.some((p) => /D-0002-x\.md: no entities/.test(p)));
+  assert.equal(spawnSync('node', [CLI, 'graph', '--check'], { cwd: root }).status, 1);
+  record(root, 'decisions', 'D-0002', 'status: superseded\nentities: [concept:pricing]');
+  record(root, 'decisions', 'D-0001', 'status: decided\nentities: [concept:pricing]\ncontradicts: [D-0002]');
+  assert.deepEqual(buildGraph(root).contradictions, [], 'a superseded decision is history, not a contradiction');
+  assert.equal(spawnSync('node', [CLI, 'graph', '--check'], { cwd: root }).status, 0);
+});
+
+test('graph: a constraint or risk met by three decisions is surfaced as a candidate pattern', () => {
+  const root = project();
+  for (const n of [1, 2, 3]) record(root, 'decisions', `D-000${n}`, 'status: decided\nentities: [constraint:legal-review, technology:node]');
+  const g = buildGraph(root);
+  assert.deepEqual(g.recurring, [{ entity: 'constraint:legal-review', decisions: ['D-0001', 'D-0002', 'D-0003'] }]);
+});
+
+test('graph: --write produces a generated view; the graph itself is never a source of truth', () => {
+  const root = project();
+  record(root, 'decisions', 'D-0001', 'status: decided\nentities: [tool:vite]');
+  execFileSync('node', [CLI, 'graph', '--write'], { cwd: root });
+  const md = fs.readFileSync(path.join(root, '.coda/graph.md'), 'utf8');
+  assert.match(md, /```mermaid\ngraph LR/);
+  assert.match(md, /Do not edit/);
+  record(root, 'decisions', 'D-0002', 'status: decided\nentities: [tool:vite]');
+  assert.equal(buildGraph(root).entities[0].decisions.length, 2, 'the graph follows the records without regenerating anything');
+  assert.equal(d(root, bash(`node "${CLI}" graph --around vite --format mermaid`, { agent_type: 'coda:memory' })), 'allow');
+});
+
+test('graph: related and contradicts are one edge per pair, whichever record declares them', () => {
+  const root = project();
+  record(root, 'decisions', 'D-0001', 'status: decided\nentities: [concept:a]\nrelated: [D-0002]');
+  record(root, 'decisions', 'D-0002', 'status: decided\nentities: [concept:a]\nrelated: [D-0001]');
+  assert.equal(buildGraph(root).edges.filter((e) => e.type === 'related').length, 1);
 });

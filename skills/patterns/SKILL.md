@@ -9,7 +9,7 @@ This replaces the retrospective held on a calendar: recurrences are read from wh
 
 The CODA command line is `node "${CLAUDE_PLUGIN_ROOT}/scripts/coda.mjs"`, written `coda` below. Run it from the project root.
 
-Delegate detection to the `coda:pattern` agent, giving it the period (30 days unless the user says otherwise) and the CLI line above. It reads the journal, the decisions, the known patterns and the git history, and returns at most five patterns with their evidence.
+Delegate detection to the `coda:pattern` agent, giving it the period (30 days unless the user says otherwise) and the CLI line above. It reads the journal, the decisions, the knowledge graph (constraints and risks that recur across decisions), the known patterns and the git history, and returns at most five patterns with their evidence.
 
 Present each one with its occurrences, so the human can check the evidence, and ask for a decision on each:
 
@@ -28,6 +28,8 @@ polarity: negative | positive | neutral
 severity: low | medium | high | critical
 status: detected | experimenting | resolved | ignored
 occurrences: <count>
+entities: [<type:name, …>]
+decisions: [<ids of the decisions it was observed in>]
 reviewed: <YYYY-MM-DD> by <name>
 ---
 # P-0003 <title>

@@ -60,6 +60,7 @@ Where spec-driven development lets the spec drive, here cognition drives: what t
 | `/coda:deliver <request>` | Build something: memory → plan and briefs → builders → verification. |
 | `/coda:decide <question>` | A choice that is costly to reverse: memory, simulation, a human decides, it is recorded. |
 | `/coda:recall <question>` | "What did we decide about…?" |
+| `/coda:graph <thing>` | What touches a component, a constraint, a risk; how decisions depend on or contradict each other. |
 | `/coda:patterns` | What keeps recurring; ignore, correct or experiment. Replaces the retrospective. |
 | `/coda:sync` | Are we still serving the intent? Replaces the status meeting. |
 | `/coda:audit` | Evidence for the ethical guardian: how decisions were made, whether agents stayed in bounds. |
@@ -84,7 +85,8 @@ A team earns the next level with evidence from its own journal, and a named huma
 .coda/
 ├── config.json      team, roles, autonomy level and perimeter, verification commands
 ├── intent.md        purpose, objectives, constraints, out of scope, regrowth signal
-├── decisions/       D-0001-….md — one record per decision, never rewritten
+├── decisions/       D-0001-….md — one record per decision, never rewritten;
+│                    their entities and links form the knowledge graph
 ├── patterns/        P-0001-….md — reviewed recurrences
 ├── audits/          the ethical guardian's reports
 └── journal/         append-only events, one stream per session, hash-chained

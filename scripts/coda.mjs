@@ -9,6 +9,7 @@ import {
   DEFAULT_CONFIG, LEVELS, ROLES, CODA_DIR, git, cliSession,
 } from './lib.mjs';
 import { brief, status } from './brief.mjs';
+import { buildGraph, neighbourhood, toMermaid, toMarkdown, ENTITY_TYPES, LINK_TYPES } from './graph.mjs';
 
 // Events only the harness may write: a model must not be able to claim that
 // verification passed or that a human changed the autonomy level.
@@ -22,6 +23,8 @@ const USAGE = `coda — cognitive orchestration for delivery agents
   coda brief                         the context every session starts from
   coda status                        facts about the team's state, as JSON
   coda next-id decisions|patterns [title]
+  coda graph [--around <id|entity>] [--format json|mermaid|entities] [--check] [--write]
+                                     the knowledge graph, derived from the records
   coda journal add <type> [--data '<json>'] [--actor <who>]
   coda journal tail [n] | query [--since <iso|Nd>] [--type <prefix>] | verify
   coda verify [--force]              run the verification commands (skipped if this exact state already passed)
@@ -219,6 +222,31 @@ switch (cmd) {
     if (!['decisions', 'patterns'].includes(kind)) fail('next-id: decisions or patterns.');
     const id = nextId(root, kind, kind === 'decisions' ? 'D-' : 'P-');
     console.log(pos[1] ? `${CODA_DIR}/${kind}/${id}-${slugify(pos.slice(1).join(' '))}.md` : id);
+    break;
+  }
+  case 'graph': {
+    const root = needRoot();
+    let g = buildGraph(root);
+    if (opt.check) {
+      for (const p of g.problems) console.log(p);
+      for (const c of g.contradictions) console.log(`open contradiction: ${c.between.join(' and ')} are both in force`);
+      if (g.problems.length || g.contradictions.length) process.exit(1);
+      console.log(`Graph consistent: ${g.nodes.filter((n) => n.kind === 'decision').length} decisions, ${g.entities.length} entities, ${g.edges.filter((e) => LINK_TYPES.includes(e.type)).length} links.`);
+      break;
+    }
+    if (opt.write) {
+      fs.writeFileSync(codaPath(root, 'graph.md'), toMarkdown(g));
+      console.log(`Wrote ${CODA_DIR}/graph.md (${g.nodes.length} nodes, ${g.edges.length} edges). It is generated: regenerate it rather than editing it.`);
+      break;
+    }
+    if (opt.around && opt.around !== true) {
+      const n = neighbourhood(g, opt.around);
+      if (!n) fail(`nothing in the graph matches "${opt.around}". Known entities: ${g.entities.map((e) => e.id).join(', ') || 'none yet'}.`);
+      g = n;
+    }
+    if (opt.format === 'mermaid') console.log(toMermaid(g));
+    else if (opt.format === 'entities') { for (const e of g.entities) console.log(`${e.id}\t${e.decisions.join(',')}\t${e.patterns.join(',')}`); }
+    else console.log(JSON.stringify({ entityTypes: ENTITY_TYPES, linkTypes: LINK_TYPES, ...g }, null, 2));
     break;
   }
   case 'list': { const root = needRoot(); for (const r of listRecords(root, pos[0] || 'decisions')) console.log(`${r.id}\t${r.meta.status || ''}\t${r.meta.date || ''}\t${r.title}\t${r.file}`); break; }

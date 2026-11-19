@@ -10,6 +10,7 @@ Your evidence, all inside the project:
 
 - `.coda/journal/` — append-only events, one JSON object per line: `session.start`, `run.start`/`run.end` (agent runs), `tool.write` (path), `tool.command`, `verify.passed`/`verify.failed`/`verify.unresolved`, `review.passed`/`review.failed`, `guard.denied`/`guard.asked` (an agent tried to leave its permissions), `decision.recorded`, `autonomy.changed`. The CODA CLI you are given in your brief can filter it (`journal query --since 30d --type verify`).
 - `.coda/decisions/` and `.coda/patterns/` — what was decided, and patterns already known. Do not report a known pattern as new; report whether it is growing, stable or fading.
+- The knowledge graph (`graph` with the CODA CLI): its `recurring` list names constraints and risks that three or more decisions ran into, and `contradictions` lists decisions in force that conflict. A recurring constraint is evidence for a pattern, not yet a pattern: read the decisions it names.
 - Git history (`git log --stat`, `git log --since`), read-only.
 
 A pattern needs at least three occurrences. Below that it is an anecdote, and reporting it trains the team to ignore you. For each pattern give:

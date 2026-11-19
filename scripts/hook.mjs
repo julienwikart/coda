@@ -49,14 +49,17 @@ export function isCodaBookkeeping(command) {
   const c = String(command || '').trim();
   if (/[;&|<>`\n]|\$\(/.test(c)) return false;
   const m = /^node\s+("[^"]+"|'[^']+'|\S+)\s+([a-z-]+)/.exec(c);
-  return Boolean(m && isOwnCli(m[1]) && ['brief', 'status', 'doctor', 'list', 'next-id', 'journal', 'verify'].includes(m[2]));
+  return Boolean(m && isOwnCli(m[1]) && ['brief', 'status', 'doctor', 'list', 'next-id', 'journal', 'verify', 'graph'].includes(m[2]));
 }
 
 /** Conservative: anything not recognised as read-only counts as an action. */
 export function isReadOnlyCommand(command) {
   let c = String(command || '').replace(/\d?>\s*\/dev\/null/g, '').replace(/2>&1/g, '');
   if (!c.trim()) return true;
-  if (/[<>`]|\$\(/.test(c)) return false;
+  if (/`|\$\(/.test(c)) return false; // substitution runs commands, also inside double quotes
+  // What is inside quotes is an argument, not shell syntax: a quoted | or ; does not split the command.
+  c = c.replace(/'[^']*'|"(?:[^"\\]|\\.)*"/g, 'Q');
+  if (/[<>'"]/.test(c)) return false; // redirection, or an unbalanced quote we will not guess about
   for (const seg of c.split(/&&|\|\||[;|\n]/)) {
     const words = seg.trim().split(/\s+/).filter(Boolean);
     // Shell control flow: a loop or a test over read-only commands is still read-only.
@@ -67,7 +70,8 @@ export function isReadOnlyCommand(command) {
     if (!words.length) continue;
     const [cmd, sub] = words;
     if (cmd === 'git') {
-      const rest = words.slice(1);
+      let rest = words.slice(1);
+      if (rest[0] === '-C' && rest.length > 2) rest = rest.slice(2); // run in another directory
       const first = rest.find((w) => !w.startsWith('-'));
       // `git branch` only lists when it is given flags and no name.
       const listing = first === 'branch' && rest.filter((w) => w !== 'branch').every((w) => /^(-a|-r|-v|-vv|--all|--remotes|--list|--show-current|--no-color)$/.test(w));
