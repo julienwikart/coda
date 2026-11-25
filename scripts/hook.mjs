@@ -13,7 +13,7 @@ import {
   COGNITIVE_AGENTS, CODA_DIR,
 } from './lib.mjs';
 import { brief, orgBrief } from './brief.mjs';
-import { resolveOrg, inOrgDir, findOrgRoot, orgAt, orgPath, teamsOf, owningTeam, ORG_DIR } from './org.mjs';
+import { resolveOrg, inOrgDir, findOrgRoot, orgAt, orgPath, teamsOf, owningTeam, withFloors, ORG_DIR } from './org.mjs';
 
 const WRITE_TOOLS = new Set(['Write', 'Edit', 'MultiEdit', 'NotebookEdit']);
 
@@ -51,7 +51,7 @@ export function isCodaBookkeeping(command) {
   if (/[;&|<>`\n]|\$\(/.test(c)) return false;
   const m = /^node\s+("[^"]+"|'[^']+'|\S+)\s+([a-z-]+)/.exec(c);
   if (!m || !isOwnCli(m[1])) return false;
-  if (m[2] === 'org') return /^node\s+("[^"]+"|'[^']+'|\S+)\s+org\s+(status|sync|map|check|decisions|pending|audit|next-id|rule(?!\s+set))\b/.test(c);
+  if (m[2] === 'org') return /^node\s+("[^"]+"|'[^']+'|\S+)\s+org\s+(status|sync|map|check|decisions|pending|audit|next-id|(rule|floors)(?!\s+set))\b/.test(c);
   if (m[2] === 'scope') return !/\sscope\s+set\b/.test(c); // reading, or refreshing the local copy
   return ['brief', 'status', 'doctor', 'list', 'next-id', 'journal', 'verify', 'graph'].includes(m[2]);
 }
@@ -87,7 +87,7 @@ export function isReadOnlyCommand(command) {
       if (words.some((w) => ['-delete', '-exec', '-execdir', '-ok', '-fprint', '-fprintf'].includes(w))) return false;
     } else if (cmd === 'node' && isOwnCli(sub)) {
       if (['level', 'init', 'verify'].includes(words[2])) return false;
-      if (words[2] === 'org' && !(['status', 'map', 'check', 'decisions', 'pending', 'audit', 'next-id'].includes(words[3]) || (words[3] === 'rule' && words[4] !== 'set'))) return false;
+      if (words[2] === 'org' && !(['status', 'map', 'check', 'decisions', 'pending', 'audit', 'next-id'].includes(words[3]) || (['rule', 'floors'].includes(words[3]) && words[4] !== 'set'))) return false;
       if (words[2] === 'scope' && words[3] === 'set') return false;
     } else if (!READ_ONLY.has(cmd)) return false;
   }
@@ -134,7 +134,7 @@ export function decide(root, cfg, input) {
       return { decision: 'ask', reason: 'Changing .coda/config.json changes what agents are allowed to do (autonomy level, perimeter, verification). A human decides.' };
     if (rel.startsWith(`${CODA_DIR}/`)) return { decision: null };
     if (cognitive) return { decision: 'deny', reason: `Cognitive agents (${actor.slice(6)}) steer, they do not deliver: only execution agents write outside .coda/.` };
-    if (matchAny(p.protected, rel)) return { decision: 'deny', reason: `${rel} is protected by .coda/config.json (autonomy.perimeter.protected). A human makes this change.` };
+    if (matchAny(p.protected, rel)) return { decision: 'deny', reason: `${rel} is protected${matchAny(cfg._floors?.protected, rel) ? ' by the organisation, for every team' : ' by .coda/config.json (autonomy.perimeter.protected)'}. A human makes this change.` };
     if (level === 'observed') return { decision: 'deny', reason: 'Autonomy level is "observed": agents propose changes, humans apply them. Describe the change instead of making it.' };
     if (level === 'supervised') return { decision: 'ask', reason: `Supervised execution: a human approves each change (${rel}).` };
     if (matchAny(p.write, rel)) return { decision: 'allow', reason: `Bounded autonomy: ${rel} is inside the delegated perimeter.` };
@@ -155,7 +155,7 @@ export function decide(root, cfg, input) {
     if (readOnly) return { decision: null };
     if (/coda\.mjs["']?\s+scope\s+set\b/.test(cmd)) return { decision: 'ask', reason: 'Declaring what a team carries is a human decision.' };
     if (/coda\.mjs["']?\s+org\s+(init|join|add-team)\b/.test(cmd)) return { decision: 'ask', reason: 'Creating an organisation, joining one or changing its list of teams is a human decision.' };
-    if (/coda\.mjs["']?\s+org\s+(record|rule\s+set)\b/.test(cmd)) return { decision: cognitive ? 'deny' : 'ask', reason: 'A decision between teams, and the rule that says who takes it, are a human\'s.' };
+    if (/coda\.mjs["']?\s+org\s+(record|(rule|floors)\s+set)\b/.test(cmd)) return { decision: cognitive ? 'deny' : 'ask', reason: 'A decision between teams, and the rule that says who takes it, are a human\'s.' };
     if (/coda\.mjs["']?\s+level\b/.test(cmd)) return { decision: 'ask', reason: 'Changing the autonomy level is a human decision.' };
     if (cognitive) return { decision: 'deny', reason: `Cognitive agents (${actor.slice(6)}) only read: they cannot run commands that act on the project. Use Read, Grep and Glob, plain read-only commands (cat, ls, grep, git log, git diff), or the CODA CLI called directly, one invocation per command and without shell variables.` };
     if (level === 'observed') return { decision: 'deny', reason: 'Autonomy level is "observed": agents propose commands, humans run them.' };
@@ -258,6 +258,9 @@ function sessionEnd(root, cfg, input) {
 
 const HANDLERS = { PreToolUse: preToolUse, PostToolUse: postToolUse, SessionStart: sessionStart, SubagentStart: subagentStart, SubagentStop: subagentStop, Stop: stop, SessionEnd: sessionEnd };
 
+/** What the harness enforces for a team: its own configuration, tightened by its organisation's floors. */
+export const enforced = (root) => withFloors(root, loadConfig(root));
+
 // ------------------------------------------- a session at the organisation's root
 //
 // Started above every team, a session has no team of its own. A change to a
@@ -291,7 +294,7 @@ export function decideAtOrg(orgDir, input) {
   if (WRITE_TOOLS.has(input.tool_name)) {
     const file = ti.file_path || ti.notebook_path || ti.path;
     const team = teamOwningFile(orgDir, file);
-    if (team) return { ...decide(team, loadConfig(team), { ...input, cwd: team }), teamRoot: team };
+    if (team) return { ...decide(team, enforced(team), { ...input, cwd: team }), teamRoot: team };
     const abs = path.resolve(orgDir, String(file || ''));
     const rel = relPath(orgDir, abs);
     if (rel !== null && rel.startsWith(`${ORG_DIR}/`)) {
@@ -339,16 +342,16 @@ function orgSession(orgDir, input) {
     if (WRITE_TOOLS.has(input.tool_name)) {
       const file = ti.file_path || ti.notebook_path || ti.path;
       const team = teamOwningFile(orgDir, file);
-      if (team) { touch(team); postToolUse(team, loadConfig(team), input); }
+      if (team) { touch(team); postToolUse(team, enforced(team), input); }
       else appendEvent(orgDir, { type: 'tool.write', actor: actorOf(input), session: input.session_id, base, data: { tool: input.tool_name, path: relPath(orgDir, file) || String(file) } });
     } else if (input.tool_name === 'Bash' && !isReadOnlyCommand(ti.command)) {
       appendEvent(orgDir, { type: 'tool.command', actor: actorOf(input), session: input.session_id, base, data: { command: redact(ti.command) } });
     }
   } else if (event === 'SubagentStart' || event === 'SubagentStop') {
     appendEvent(orgDir, { type: event === 'SubagentStart' ? 'run.start' : 'run.end', actor: actorOf(input), session: input.session_id, base, data: { agent: input.agent_type || 'unknown', run: input.agent_id || null } });
-    if (event === 'SubagentStop') for (const team of st.get().teams) subagentStop(team, loadConfig(team), { ...input, agent_id: input.agent_id, _quiet: true });
+    if (event === 'SubagentStop') for (const team of st.get().teams) subagentStop(team, enforced(team), { ...input, agent_id: input.agent_id, _quiet: true });
   } else if (event === 'Stop') {
-    for (const team of st.get().teams) if (stop(team, loadConfig(team), input)) return; // one gate at a time: the first team that is not verified holds the session
+    for (const team of st.get().teams) if (stop(team, enforced(team), input)) return; // one gate at a time: the first team that is not verified holds the session
   } else if (event === 'SessionEnd') {
     appendEvent(orgDir, { type: 'session.end', session: input.session_id, base, data: { reason: input.reason || null } });
   }
@@ -369,7 +372,7 @@ function main() {
   }
   const handler = HANDLERS[input.hook_event_name || process.argv[2]];
   if (!handler) return;
-  const cfg = loadConfig(root);
+  const cfg = enforced(root);
   try {
     if (input.session_id) noteSession(root, input.session_id);
     handler(root, cfg, input);

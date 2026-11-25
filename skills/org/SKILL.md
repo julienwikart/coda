@@ -48,6 +48,14 @@ A decision that binds more than one team is taken once, with `/coda:arbitrate`, 
 
 The ethical guardian is declared once, among the organisation's humans, and is then every team's guardian — which is what puts the guardian outside each team. `coda org audit` gives that person the view across teams.
 
+## Floors for every team's harness
+
+Each team sets its own autonomy level, perimeter and verification. The organisation sets what none of them may go below: `coda org floors` shows it, and `coda org floors set --by "<who>" --protect "<glob>" --deny-command "<pattern>" --ask-command "<pattern>" --verify "<command>" --require-review --max-level <level>` states the whole set at once (what is left out is no longer a floor). Paths are relative to each team's own root.
+
+The harness enforces a team's configuration tightened by the floors: protected paths and forbidden commands add up, the organisation's verification commands always run, and the level is the lower of the team's and the cap. A team can be stricter; nothing a team writes in its own configuration makes it laxer. Keep floors to what truly holds for everyone — secrets, releases, the checks no delivery may skip. A floor that only suits some teams will be asked away.
+
+If a team's organisation cannot be read, its last floors read on that machine keep applying; a team that never read them drops to `observed` until it can. That is the one place where the organisation blocks rather than warns.
+
 ## Inspect it
 
 `coda org status` shows the organisation this team belongs to, its teams, whether this team is registered, and, for a remote organisation, when its copy was last refreshed. `coda org sync` refreshes it now. If the brief says the organisation could not be read, say so plainly: the team is then working without the organisation's constraints in front of it.
