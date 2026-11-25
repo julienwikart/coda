@@ -1,5 +1,5 @@
 // The cognitive brief: what every session and every execution agent starts from.
-import { buildGraph } from './graph.mjs';
+import { buildGraph, buildOrgGraph, bearingOn } from './graph.mjs';
 import { resolveOrg, orgFacts, teamsOf, overlaps, scopeProblems, ORG_DIR } from './org.mjs';
 import { intentSummary, listRecords, readEvents, loadVerified, fingerprint, verifyJournal, LEVELS } from './lib.mjs';
 
@@ -30,7 +30,26 @@ function mapSection(o, self) {
   const mine = overlaps(teams).filter((v) => !self.selfName || v.teams.includes(self.selfName));
   for (const v of mine) lines.push(`- Open overlap: ${v.teams.join(' and ')} both declare the ${v.kind} "${v.what}". Two teams answering for the same thing is for the humans to settle; say so before working on it.`);
   if (self.selfName) lines.push('A request that reaches into what another team carries is not this team\'s to deliver: say which team, and stop there until the humans have agreed how to proceed.');
+  lines.push(...crossTeam(teams, self.selfName));
   if (self.selfName && teams.some((t) => t.root && !t.isSelf)) lines.push('The other teams share this repository: the harness refuses any write in their directories, at every autonomy level.');
+  return lines;
+}
+
+/** What other teams have decided that bears on this one, and contradictions between teams. Fails open. */
+function crossTeam(teams, selfName) {
+  let g; try { g = buildOrgGraph(teams); } catch { return []; }
+  const lines = [];
+  const me = teams.find((t) => t.isSelf);
+  if (selfName && me) {
+    const bearing = bearingOn(g, selfName, me.scope);
+    if (bearing.length) {
+      lines.push('', '**Decisions in force in other teams that bear on this one** (read the record before working near it; `coda org decisions` lists them all)');
+      for (const d of bearing.slice(0, 6)) lines.push(`- ${d.id} ${clip(d.title, 90)} — ${d.why}`);
+      if (bearing.length > 6) lines.push(`- …and ${bearing.length - 6} more.`);
+    }
+  }
+  for (const c of g.betweenTeams.filter((x) => !selfName || x.teams.includes(selfName)))
+    lines.push(`- Open contradiction between teams: ${c.between.join(' and ')} are both in force. It is for the humans to settle, not for either team to work around.`);
   return lines;
 }
 
@@ -124,7 +143,17 @@ export function status(root, cfg) {
     intent: Boolean(intentSummary(root)?.purpose),
     decisions: { total: listRecords(root, 'decisions').length, inForce: activeDecisions(root).length },
     patterns: { total: listRecords(root, 'patterns').length, open: openPatterns(root).length },
-    organisation: (() => { try { return orgFacts(root, cfg, { refresh: 'never' }); } catch (e) { return { declared: true, readable: false, error: e.message }; } })(),
+    organisation: (() => {
+      try {
+        const facts = orgFacts(root, cfg, { refresh: 'never' });
+        if (!facts?.readable) return facts;
+        const o = resolveOrg(root, cfg, { refresh: 'never' });
+        const teams = teamsOf(o, { selfRoot: root, selfName: cfg.team.name });
+        const g = buildOrgGraph(teams);
+        const me = teams.find((t) => t.isSelf);
+        return { ...facts, acrossTeams: { bearingOnThisTeam: me ? bearingOn(g, cfg.team.name, me.scope).map(({ id, title, why }) => ({ id, title, why })) : [], contradictions: g.betweenTeams, recurring: g.recurring } };
+      } catch (e) { return { declared: true, readable: false, error: e.message }; }
+    })(),
     graph: (() => { const g = buildGraph(root); return { entities: g.entities.length, links: g.edges.filter((e) => e.type !== 'mentions').length, openContradictions: g.contradictions, recurring: g.recurring, problems: g.problems.length }; })(),
     verification: { commands: cfg.verify.commands, requireReview: cfg.verify.requireReview, currentTreeVerified: fp !== null && verified.fp === fp, currentTreeReviewed: fp !== null && verified.reviewFp === fp },
     journal: { events: j.count, streams: j.files, intact: j.problems.length === 0, problems: j.problems.slice(0, 5) },

@@ -28,6 +28,10 @@ Entity types: `team`, `technology`, `tool`, `component`, `concept`, `process`, `
 
 Show a Mermaid diagram when the neighbourhood is small enough to read (roughly twenty nodes); otherwise answer in prose with the record ids.
 
+## Across teams
+
+When the team belongs to an organisation, `coda graph --org` derives the same graph over every team, with records named `team/D-0001`: `--around <entity>` shows what several teams decided about one thing, `--check` reports contradictions between decisions in force in different teams, links to records no readable team holds, and constraints or risks that recur across teams. A link may name another team's decision (`related: [catalog/D-0002]`, `contradicts: [catalog/D-0001]`). A contradiction between teams is never settled by editing a record; it goes to the humans of both.
+
 ## Maintain it
 
 When `--check` reports decisions without entities, propose entities and links for each from the text of the record, reusing the names already in `coda graph --format entities` so that the same thing is not named twice. Show the proposal to the human and write only what they confirm: an entity or a link is a claim about what a decision means, and the decision is theirs. Add only the frontmatter lines; do not touch the body of a past decision.

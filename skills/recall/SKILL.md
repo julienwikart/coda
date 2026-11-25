@@ -11,6 +11,8 @@ Delegate the question to the `coda:memory` agent, passing the user's words and a
 
 When the question is about a thing rather than a topic ("everything that touches the billing API"), start from the graph: `coda graph --around <entity>`.
 
+If the team belongs to an organisation, the question is asked of every team's memory, not only this one's: say so to the memory agent and pass it the CLI line above. An answer found in another team's records is given with its team (`catalog/D-0002`) and, when the organisation is read from copies, with their age (`coda org status`).
+
 Answer the question directly, citing decision ids so the human can open the records. If the memory holds nothing, say so — and if the subject clearly deserves a decision, suggest `/coda:decide`.
 
 Record the use: `coda journal add memory.recall --data '{"query": "<short form of the question>", "hits": <number of records found>}'`. This is how the team sees whether its memory is actually reused.

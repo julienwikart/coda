@@ -10,7 +10,7 @@ import {
 } from './lib.mjs';
 import { brief, status } from './brief.mjs';
 import { resolveOrg, orgFacts, findOrgRoot, loadOrgFile, orgPath, parseHuman, orgAt, teamsOf, overlaps, scopeProblems, ORG_DIR } from './org.mjs';
-import { buildGraph, neighbourhood, toMermaid, toMarkdown, ENTITY_TYPES, LINK_TYPES } from './graph.mjs';
+import { buildGraph, buildOrgGraph, bearingOn, neighbourhood, toMermaid, toMarkdown, parseEntity, ENTITY_TYPES, LINK_TYPES } from './graph.mjs';
 
 // Events only the harness may write: a model must not be able to claim that
 // verification passed or that a human changed the autonomy level.
@@ -30,6 +30,10 @@ const USAGE = `coda — cognitive orchestration for delivery agents
   coda org add-team --name <team> (--path <dir> | --repo <git url>) --by <human>
   coda org join (--path <dir> | --repo <git url> [--ref <branch>]) --by <human>
   coda org status | sync             the organisation this team belongs to; refresh its local copies
+  coda org decisions [--entity <e>] [--grep <text>] [--bearing] [--all]
+                                     decisions in force in every team (--bearing: those that bear on this one)
+  coda graph --org [--around <id|entity>] [--format …] [--check]
+                                     the graph across teams: shared entities, contradictions, recurrences
   coda org map | check               who carries what; overlaps and gaps (check exits 1 on an overlap)
   coda scope                         what this team declares it carries
   coda scope set --by <human> [--domain <d>]... [--component <c>]... [--path <glob>]...
@@ -186,7 +190,34 @@ function org(pos, opt) {
     for (const p of problems) console.log(`gap: ${p}`);
     if (clash.length) process.exit(1);
     console.log(`${teams.length} team(s), no overlap${problems.length ? `, ${problems.length} gap(s) above` : ''}.`);
-  } else fail('org: use init, add-team, join, status, sync, map or check.');
+  } else if (sub === 'decisions') {
+    // What every team has decided, for the memory agent and for /coda:recall. Records only — never journals.
+    const { teams, cfg } = orgContext();
+    const g = buildOrgGraph(teams);
+    const me = teams.find((t) => t.isSelf);
+    const wantEntity = opt.entity && opt.entity !== true ? (parseEntity(opt.entity).id || slugify(opt.entity)) : null;
+    const grep = opt.grep && opt.grep !== true ? String(opt.grep).toLowerCase() : null;
+    const bearing = opt.bearing && me ? new Set(bearingOn(g, cfg.team.name, me.scope).map((d) => d.id)) : null;
+    const rows = g.nodes.filter((n) => n.kind === 'decision' && (opt.all || !['superseded', 'cancelled', 'rejected'].includes(n.status))).filter((n) => {
+      if (bearing && !bearing.has(n.id)) return false;
+      const ents = g.edges.filter((e) => e.type === 'mentions' && e.from === n.id).map((e) => e.to);
+      if (wantEntity && !ents.some((id) => id === wantEntity || id.split(':')[1] === wantEntity)) return false;
+      if (grep) { let text = n.title; try { text += fs.readFileSync(n.file, 'utf8'); } catch { /* title only */ } if (!text.toLowerCase().includes(grep)) return false; }
+      return true;
+    });
+    for (const n of rows) console.log(`${n.id}\t${n.status}\t${n.date}\t${n.title}\t${g.edges.filter((e) => e.type === 'mentions' && e.from === n.id).map((e) => e.to).join(',')}\t${n.file}`);
+    if (!rows.length) console.log('No decision matches.');
+  } else fail('org: use init, add-team, join, status, sync, map, check or decisions.');
+}
+
+/** The organisation and its teams, from inside a team or from the organisation's own root. */
+function orgContext() {
+  const root = findRoot(process.cwd());
+  const cfg = root ? loadConfig(root) : null;
+  const o = root ? resolveOrg(root, cfg, { refresh: 'never' }) : (() => { const dir = findOrgRoot(process.cwd()); return dir ? orgAt(dir) : null; })();
+  if (!o) fail('no organisation here: this is neither a team that belongs to one nor an organisation\'s root.');
+  if (o.error) fail(o.error);
+  return { o, root, cfg, teams: teamsOf(o, { selfRoot: root, selfName: cfg?.team?.name }) };
 }
 
 function scope(root, pos, opt) {
@@ -321,6 +352,27 @@ switch (cmd) {
     break;
   }
   case 'graph': {
+    if (opt.org) {
+      const { o, teams } = orgContext();
+      let g = buildOrgGraph(teams);
+      if (opt.check) {
+        for (const p of g.problems) console.log(p);
+        for (const c of g.betweenTeams) console.log(`open contradiction between teams: ${c.between.join(' and ')} are both in force`);
+        for (const r of g.recurring) console.log(`recurring across teams: ${r.entity} — ${r.decisions.join(', ')}`);
+        if (g.problems.length || g.betweenTeams.length) process.exit(1);
+        console.log(`${o.name}: ${g.nodes.filter((n) => n.kind === 'decision').length} decisions across ${teams.filter((t) => t.dir).length} team(s), ${g.shared.length} thing(s) more than one team has decided about.`);
+        break;
+      }
+      if (opt.around && opt.around !== true) {
+        const n = neighbourhood(g, opt.around);
+        if (!n) fail(`nothing in the organisation's graph matches "${opt.around}".`);
+        g = { ...g, ...n };
+      }
+      if (opt.format === 'mermaid') console.log(toMermaid(g));
+      else if (opt.format === 'entities') { for (const e of g.entities) console.log(`${e.id}\t${e.teams.join(',')}\t${e.decisions.join(',')}`); }
+      else console.log(JSON.stringify({ organisation: o.name, ...g }, null, 2));
+      break;
+    }
     const root = needRoot();
     let g = buildGraph(root);
     if (opt.check) {
