@@ -7,7 +7,8 @@ CODA does not provide a harness. It states what a harness must guarantee before 
 ## The five guarantees
 
 **G1 — Context and memory.** Before an agent acts in the project, it has received the team's brief: the intent's purpose, its non-negotiable constraints, what is out of scope, the decisions in force, the open patterns and the current autonomy level.
-*Adapter:* a session-start hook injects the output of `coda brief`.
+When the team belongs to an organisation, the brief also carries the organisation's purpose, its non-negotiable constraints and what it puts out of scope, read from the organisation itself: no human copies them into each team.
+*Adapter:* a session-start hook injects the output of `coda brief`. An organisation in the same repository is read from disk. One in a repository of its own is read from a local read-only copy that the hook refreshes at session start with a time-boxed fetch; the brief states the date of the copy, and says so when the organisation could not be read at all.
 
 **G2 — Guardrails by permission.** What an agent may write or run is decided outside the model, from `.coda/config.json`:
 
@@ -20,6 +21,8 @@ CODA does not provide a harness. It states what a harness must guarantee before 
 | Command in `denyCommands` | deny | deny | deny |
 | Edit the journal | deny | deny | deny |
 | Edit `.coda/config.json`, change level | ask | ask | ask |
+| Edit anything under `.coda-org/` | ask | ask | ask |
+| Edit the organisation's journal, or the local copy of a remote organisation | deny | deny | deny |
 
 At every level, cognitive agents cannot write outside `.coda/` or run commands that act on the project. An unreadable or invalid configuration falls back to `observed`: a broken config never widens permissions.
 *Adapter:* a pre-tool-use hook on file-writing tools and the shell returns allow, ask or deny.
@@ -37,6 +40,8 @@ At every level, cognitive agents cannot write outside `.coda/` or run commands t
 
 Stated plainly, so nobody delegates on a false assumption:
 
+- **A remote organisation is as fresh as its last fetch.** Offline, or when its repository cannot be reached, the last copy serves; a team that has never fetched it starts its session without the organisation's constraints, and the brief says exactly that. Nothing here blocks work: only the guard fails closed.
+- **In a repository holding several teams, the harness follows the directory the session starts in.** Start it in the team's directory; from the repository root no team is found and nothing is enforced.
 - **Shell commands are not sandboxed.** The guard reads the command text. At `bounded`, a command that is not in `askCommands` or `denyCommands` follows your harness's own permission rules, and a shell command can write anywhere the process can. The perimeter is exact for file-editing tools and best-effort for the shell. Use your harness's sandbox for a hard boundary.
 - **The journal is tamper-evident, not tamper-proof.** Someone with write access to the repository can rewrite a whole stream. Protect it the way you protect history: review, branch protection.
 - **Human attribution is declared, not authenticated.** `--by <name>` and `human:<name>` actors record who the session says decided. The harness's own approval prompt is the actual control.
@@ -62,6 +67,7 @@ One JSON object per line, in `.coda/journal/<YYYY-MM>/<session>.jsonl`:
 | `verify` | `passed`, `failed`, `unresolved` | harness |
 | `review` | `passed`, `failed` | harness |
 | `autonomy` | `changed` | harness, on a human's decision |
+| `org` | `initialized`, `team-added`, `joined` | harness, on a human's decision |
 | `decision`, `intent`, `pattern`, `memory`, `audit`, `delivery` | `recorded`, `updated`, `sync`, `reviewed`, `recall`, `completed` | skills, via `coda journal add` |
 
 ## Adapting another harness

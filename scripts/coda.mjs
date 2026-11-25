@@ -9,11 +9,12 @@ import {
   DEFAULT_CONFIG, LEVELS, ROLES, CODA_DIR, git, cliSession,
 } from './lib.mjs';
 import { brief, status } from './brief.mjs';
+import { resolveOrg, orgFacts, findOrgRoot, loadOrgFile, orgPath, parseHuman, ORG_DIR } from './org.mjs';
 import { buildGraph, neighbourhood, toMermaid, toMarkdown, ENTITY_TYPES, LINK_TYPES } from './graph.mjs';
 
 // Events only the harness may write: a model must not be able to claim that
 // verification passed or that a human changed the autonomy level.
-const RESERVED = ['session', 'run', 'tool', 'guard', 'verify', 'review', 'autonomy', 'coda'];
+const RESERVED = ['session', 'run', 'tool', 'guard', 'verify', 'review', 'autonomy', 'coda', 'org'];
 
 const USAGE = `coda — cognitive orchestration for delivery agents
 
@@ -25,6 +26,10 @@ const USAGE = `coda — cognitive orchestration for delivery agents
   coda next-id decisions|patterns [title]
   coda graph [--around <id|entity>] [--format json|mermaid|entities] [--check] [--write]
                                      the knowledge graph, derived from the records
+  coda org init --name <organisation> --by <human> [--human "<name>=<role>,…"]...
+  coda org add-team --name <team> (--path <dir> | --repo <git url>) --by <human>
+  coda org join (--path <dir> | --repo <git url> [--ref <branch>]) --by <human>
+  coda org status | sync             the organisation this team belongs to; refresh its local copy
   coda journal add <type> [--data '<json>'] [--actor <who>]
   coda journal tail [n] | query [--since <iso|Nd>] [--type <prefix>] | verify
   coda verify [--force]              run the verification commands (skipped if this exact state already passed)
@@ -120,6 +125,53 @@ function init(opt) {
   console.log(`Initialised ${CODA_DIR}/ — autonomy level: ${level}; verification: ${cfg.verify.commands.join(', ') || 'none yet'}.`);
 }
 
+const who = (opt) => { if (!opt.by || opt.by === true) fail('--by <human> is required: a named human decides this.'); return String(opt.by); };
+
+function org(pos, opt) {
+  const sub = pos[0];
+  if (sub === 'init') {
+    const dir = process.cwd();
+    if (fs.existsSync(orgPath(dir, 'org.json'))) fail(`${ORG_DIR}/org.json already exists here.`);
+    if (!opt.name || opt.name === true) fail('--name <organisation> is required.');
+    const by = who(opt);
+    const humans = list(opt.human).map((h) => parseHuman(h) || fail(`--human "${h}": expected "<name>=<role>,<role>" with roles among ${ROLES.join(', ')}.`));
+    fs.mkdirSync(orgPath(dir, 'decisions'), { recursive: true });
+    fs.writeFileSync(orgPath(dir, 'org.json'), JSON.stringify({ version: 1, name: String(opt.name), humans, teams: [] }, null, 2) + '\n');
+    fs.writeFileSync(orgPath(dir, 'intent.md'), INTENT_TEMPLATE.replace('level: team', 'level: organization').replace('why this team and this product exist', 'why this organisation exists').replace(/\n## Regrowth signal[\s\S]*$/, '\n'));
+    fs.writeFileSync(orgPath(dir, 'decisions', '.gitkeep'), '');
+    fs.writeFileSync(orgPath(dir, '.gitignore'), '*.lock\n');
+    appendEvent(dir, { type: 'org.initialized', actor: `human:${by}`, session: cliSession(dir), base: orgPath(dir), data: { name: String(opt.name) } });
+    console.log(`Initialised ${ORG_DIR}/ for "${opt.name}". Next: write ${ORG_DIR}/intent.md, then register each team with \`coda org add-team\`.`);
+  } else if (sub === 'add-team') {
+    const dir = findOrgRoot(process.cwd()) || fail(`no ${ORG_DIR}/ found here or above. Run this in the organisation's repository.`);
+    const loaded = loadOrgFile(dir); if (loaded.error) fail(loaded.error);
+    if (!opt.name || opt.name === true) fail('--name <team> is required.');
+    const where = opt.path && opt.path !== true ? { path: String(opt.path) } : opt.repo && opt.repo !== true ? { repo: String(opt.repo) } : fail('give --path <dir> (same repository) or --repo <git url>.');
+    if (loaded.org.teams.some((t) => t.name === opt.name)) fail(`a team named "${opt.name}" is already registered.`);
+    const by = who(opt);
+    loaded.org.teams.push({ name: String(opt.name), ...where });
+    fs.writeFileSync(orgPath(dir, 'org.json'), JSON.stringify(loaded.org, null, 2) + '\n');
+    appendEvent(dir, { type: 'org.team-added', actor: `human:${by}`, session: cliSession(dir), base: orgPath(dir), data: { team: String(opt.name), ...where } });
+    console.log(`Team "${opt.name}" registered in ${loaded.org.name}.`);
+  } else if (sub === 'join') {
+    const root = needRoot();
+    const cfg = loadConfig(root); if (cfg._error) fail(cfg._error);
+    const link = opt.repo && opt.repo !== true ? { repo: String(opt.repo), ...(opt.ref && opt.ref !== true ? { ref: String(opt.ref) } : {}) } : opt.path && opt.path !== true ? { path: String(opt.path) } : fail('give --path <dir> or --repo <git url>.');
+    const by = who(opt);
+    const o = resolveOrg(root, { ...cfg, org: link }, { refresh: 'now', timeoutMs: 60000 });
+    if (o.error) fail(`${o.error}. Nothing was changed.`);
+    cfg.org = link; saveConfig(root, cfg);
+    appendEvent(root, { type: 'org.joined', actor: `human:${by}`, session: cliSession(root), data: { organisation: o.name, ...link } });
+    console.log(`Joined ${o.name}.${o.team ? '' : ` This team ("${cfg.team.name}") is not in its list of teams yet: someone of the organisation runs \`coda org add-team --name "${cfg.team.name}" …\` there.`}`);
+  } else if (sub === 'status' || sub === 'sync') {
+    const root = needRoot();
+    const facts = orgFacts(root, loadConfig(root), { refresh: sub === 'sync' ? 'now' : 'never', timeoutMs: 60000 });
+    if (!facts) { console.log('This team belongs to no organisation.'); return; }
+    console.log(JSON.stringify(facts, null, 2));
+    if (sub === 'sync' && facts.fetchError) process.exit(1);
+  } else fail('org: use init, add-team, join, status or sync.');
+}
+
 function journal(root, pos, opt) {
   const sub = pos[0];
   if (sub === 'add') {
@@ -203,6 +255,14 @@ function doctor(root) {
   const humans = cfg.team.humans || [];
   add(humans.length > 0, `${humans.length} human(s) declared`, 'Declare the humans and their roles in config.json (team.humans).');
   for (const role of ROLES) add(humans.some((h) => (h.roles || []).includes(role)), `role held: ${role}`, `Nobody holds ${role}.`);
+  const o = orgFacts(root, cfg, { refresh: 'never' });
+  if (o) {
+    add(o.readable, `organisation is readable${o.readable ? ` (${o.name})` : ''}`, o.error);
+    if (o.readable) {
+      add(o.thisTeamRegistered, 'this team is in the organisation\'s list of teams', `Add it with \`coda org add-team --name "${cfg.team.name}"\` in the organisation.`);
+      add(o.intent && o.intentStatus !== 'draft', 'organisation intent is written and no longer a draft', `Write ${ORG_DIR}/intent.md with the organisation's intent architect.`);
+    }
+  }
   const intent = fs.existsSync(codaPath(root, 'intent.md')) && !/status:\s*draft/.test(fs.readFileSync(codaPath(root, 'intent.md'), 'utf8'));
   add(intent, 'intent is written and no longer a draft', 'Run /coda:intent.');
   for (const c of checks) console.log(`${c.ok ? '✓' : '✗'} ${c.label}${c.ok || !c.fix ? '' : `\n    → ${c.fix}`}`);
@@ -215,6 +275,7 @@ if (opt.help) { process.stdout.write(USAGE); process.exit(0); }
 switch (cmd) {
   case 'init': init(opt); break;
   case 'brief': { const root = needRoot(); console.log(brief(root, loadConfig(root))); break; }
+  case 'org': org(pos, opt); break;
   case 'status': { const root = needRoot(); console.log(JSON.stringify(status(root, loadConfig(root)), null, 2)); break; }
   case 'next-id': {
     const root = needRoot();

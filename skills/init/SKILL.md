@@ -38,6 +38,8 @@ coda init --name "<team>" --level <level> --by "<who decided>" \
 
 `--write` replaces the default writable perimeter; `--protect` adds to the paths protected at every level (secrets, CI and infrastructure are protected by default). `external` marks a human outside the team. Later changes are made in `.coda/config.json`; the harness asks a human to approve each of them, because that file defines what agents are allowed to do.
 
+If the repository already holds an organisation (a `.coda-org/` directory above this project), the team belongs to it automatically; tell the human, and that someone of the organisation registers the team there (`/coda:org`).
+
 ## 4. Hand over
 
 Run `coda doctor` and show what is in place and what is not. Tell them what happens from now on — every session starts from the team's brief, the harness enforces the level, every run lands in the journal, nothing is accepted until verification passes — and that `.coda/` is meant to be committed: it is the team's shared memory. The next step is the intent: offer to run `/coda:intent` now.

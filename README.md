@@ -66,6 +66,7 @@ Where spec-driven development lets the spec drive, here cognition drives: what t
 | `/coda:audit` | Evidence for the ethical guardian: how decisions were made, whether agents stayed in bounds. |
 | `/coda:autonomy` | Raise or lower what agents may do, on the journal's evidence. |
 | `/coda:status` | Where the team stands, and whether the harness is really in place. |
+| `/coda:org` | Several teams: the organisation's intent and constraints, declared once and delivered to every team. |
 
 You do not have to use the commands for the harness to work. Once `.coda/` exists, any session in the project gets the brief, the guardrails, the journal and the verification gate.
 

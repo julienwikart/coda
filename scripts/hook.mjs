@@ -13,6 +13,7 @@ import {
   COGNITIVE_AGENTS, CODA_DIR,
 } from './lib.mjs';
 import { brief } from './brief.mjs';
+import { resolveOrg, inOrgDir, ORG_DIR } from './org.mjs';
 
 const WRITE_TOOLS = new Set(['Write', 'Edit', 'MultiEdit', 'NotebookEdit']);
 
@@ -49,7 +50,9 @@ export function isCodaBookkeeping(command) {
   const c = String(command || '').trim();
   if (/[;&|<>`\n]|\$\(/.test(c)) return false;
   const m = /^node\s+("[^"]+"|'[^']+'|\S+)\s+([a-z-]+)/.exec(c);
-  return Boolean(m && isOwnCli(m[1]) && ['brief', 'status', 'doctor', 'list', 'next-id', 'journal', 'verify', 'graph'].includes(m[2]));
+  if (!m || !isOwnCli(m[1])) return false;
+  if (m[2] === 'org') return /^node\s+("[^"]+"|'[^']+'|\S+)\s+org\s+(status|sync)\b/.test(c); // reading, or refreshing the local copy
+  return ['brief', 'status', 'doctor', 'list', 'next-id', 'journal', 'verify', 'graph'].includes(m[2]);
 }
 
 /** Conservative: anything not recognised as read-only counts as an action. */
@@ -83,6 +86,7 @@ export function isReadOnlyCommand(command) {
       if (words.some((w) => ['-delete', '-exec', '-execdir', '-ok', '-fprint', '-fprintf'].includes(w))) return false;
     } else if (cmd === 'node' && isOwnCli(sub)) {
       if (['level', 'init', 'verify'].includes(words[2])) return false;
+      if (words[2] === 'org' && words[3] !== 'status') return false;
     } else if (!READ_ONLY.has(cmd)) return false;
   }
   return true;
@@ -102,6 +106,15 @@ export function decide(root, cfg, input) {
   if (WRITE_TOOLS.has(tool)) {
     const file = ti.file_path || ti.notebook_path || ti.path;
     const rel = relPath(root, file);
+    // What the organisation shares is changed by a human, wherever it sits relative to this team.
+    let org = null; try { org = resolveOrg(root, cfg, { refresh: 'never' }); } catch { /* unreadable: the generic rules below still apply */ }
+    let abs = path.resolve(root, String(file || '')); try { abs = path.join(fs.realpathSync(path.dirname(abs)), path.basename(abs)); } catch { /* new directory */ }
+    const orgRel = inOrgDir(org, abs) ?? (rel !== null && rel.startsWith(`${ORG_DIR}/`) ? rel.slice(ORG_DIR.length + 1) : null);
+    if (orgRel !== null) {
+      if (orgRel.startsWith('journal/')) return { decision: 'deny', reason: 'The organisation journal is append-only and written by the harness.' };
+      if (org?.source === 'remote') return { decision: 'deny', reason: `This is a read-only copy of the organisation repository (${org.location}). Changes are made there, by pull request.` };
+      return { decision: 'ask', reason: `${ORG_DIR}/ holds what every team shares (intent, constraints, the list of teams). A human of the organisation decides each change.` };
+    }
     if (rel === null) {
       const abs = path.resolve(root, String(file || ''));
       const scratch = [os.tmpdir(), input.scratchpad_dir].filter(Boolean).some((d) => abs.startsWith(path.resolve(d) + path.sep));
@@ -124,14 +137,16 @@ export function decide(root, cfg, input) {
   if (tool === 'Bash') {
     const cmd = String(ti.command || '');
     const readOnly = isReadOnlyCommand(cmd);
-    if (!readOnly && /\.coda\/(journal|\.state)/.test(cmd))
+    if (!readOnly && /\.coda(-org)?\/(journal|\.state)/.test(cmd))
       return { decision: 'deny', reason: 'The CODA journal is append-only: commands may read it, never modify it.' };
     for (const part of cmd.split(/&&|\|\||[;\n]/)) {
       const hit = matchCommand(p.denyCommands, part);
       if (hit) return { decision: 'deny', reason: `Command matches "${hit}" in autonomy.perimeter.denyCommands. A human runs this.` };
     }
+    if (!readOnly && cmd.includes(`${ORG_DIR}/`) && !isCodaBookkeeping(cmd)) return { decision: cognitive || level === 'observed' ? 'deny' : 'ask', reason: `This command acts on ${ORG_DIR}/, which holds what every team shares. A human of the organisation decides each change.` };
     if (isCodaBookkeeping(cmd)) return { decision: 'allow', reason: 'CODA bookkeeping (read, journal append or configured verification).' };
     if (readOnly) return { decision: null };
+    if (/coda\.mjs["']?\s+org\s+(init|join|add-team)\b/.test(cmd)) return { decision: 'ask', reason: 'Creating an organisation, joining one or changing its list of teams is a human decision.' };
     if (/coda\.mjs["']?\s+level\b/.test(cmd)) return { decision: 'ask', reason: 'Changing the autonomy level is a human decision.' };
     if (cognitive) return { decision: 'deny', reason: `Cognitive agents (${actor.slice(6)}) only read: they cannot run commands that act on the project. Use Read, Grep and Glob, or plain read-only commands (cat, ls, grep, git log, git diff).` };
     if (level === 'observed') return { decision: 'deny', reason: 'Autonomy level is "observed": agents propose commands, humans run them.' };
@@ -171,7 +186,8 @@ function sessionStart(root, cfg, input) {
   const state = loadState(root, input.session_id);
   if (!state.baseline) { state.baseline = fingerprint(root); state.blocks = 0; saveState(root, input.session_id, state); }
   appendEvent(root, { type: 'session.start', session: input.session_id, data: { source: input.source || 'startup', level: cfg.autonomy.level } });
-  out({ hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: brief(root, cfg) } });
+  // The one moment the organisation is refreshed: time-boxed, and the last copy serves if it fails.
+  out({ hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: brief(root, cfg, { refresh: 'if-stale', timeoutMs: 8000 }) } });
 }
 
 function subagentStart(root, cfg, input) {

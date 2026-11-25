@@ -1,5 +1,6 @@
 // The cognitive brief: what every session and every execution agent starts from.
 import { buildGraph } from './graph.mjs';
+import { resolveOrg, orgFacts, ORG_DIR } from './org.mjs';
 import { intentSummary, listRecords, readEvents, loadVerified, fingerprint, verifyJournal, LEVELS } from './lib.mjs';
 
 export const LEVEL_TEXT = {
@@ -18,13 +19,33 @@ export function openPatterns(root) {
   return listRecords(root, 'patterns').filter((p) => ['detected', 'open', 'experimenting'].includes(String(p.meta.status || 'detected').toLowerCase()));
 }
 
-export function brief(root, cfg) {
+/** What the organisation contributes to every team's brief. Reads only; never fetches unless asked to. */
+function orgSection(root, cfg, opts) {
+  let o;
+  try { o = resolveOrg(root, cfg, opts); } catch (e) { o = { declared: true, error: e.message }; }
+  if (!o) return [];
+  if (o.error) return ['', '## Organisation', `This team declares an organisation, but ${o.error}. Its intent and constraints are missing from this brief — tell the human before delivering anything that could touch them.`];
+  const lines = ['', `## Organisation — ${o.name}`];
+  const i = o.intent;
+  if (i?.purpose) {
+    lines.push(clip(i.purpose, 500));
+    if (i.constraints) lines.push('', '**Non-negotiable constraints of the organisation** (they bind every team; a team may add to them, never relax them)', clip(i.constraints, 900));
+    if (i.outOfScope) lines.push('', '**Out of scope for the whole organisation**', clip(i.outOfScope, 400));
+  } else lines.push(`The organisation has not written its intent yet (${ORG_DIR}/intent.md).`);
+  if (o.source === 'remote') lines.push('', `_Read from ${o.location}, as of ${o.fetchedAt ? new Date(o.fetchedAt).toISOString().slice(0, 16).replace('T', ' ') + ' UTC' : 'an unknown date'}${o.fetchError ? ` — the last refresh ${o.fetchError}, so this may be out of date` : ''}._`);
+  if (!o.team) lines.push('', `_This team ("${cfg.team.name || 'unnamed'}") is not in the organisation's list of teams yet._`);
+  return lines;
+}
+
+export function brief(root, cfg, opts = { refresh: 'never' }) {
   const lines = ['# CODA brief', ''];
   const humans = (cfg.team.humans || []).map((h) => `${h.name} (${(h.roles || []).join(', ') || 'no role'})`).join('; ');
   lines.push(`This project is run by a sandwich team${cfg.team.name ? ` — ${cfg.team.name}` : ''}: ${humans || 'humans not declared yet'}.`);
   lines.push('Humans hold the intent; cognitive agents (memory, pattern, simulation, coordination) turn it into steering; execution agents (builder, verifier) deliver. Agents propose, humans decide.');
   lines.push('', `**Autonomy level:** ${LEVEL_TEXT[cfg.autonomy.level]} Enforced by the harness, not by this text.`);
   if (cfg._error) lines.push(`**Config problem:** ${cfg._error} — falling back to "observed". Tell the human.`);
+
+  lines.push(...orgSection(root, cfg, opts));
 
   const intent = intentSummary(root);
   if (intent && intent.purpose) {
@@ -47,7 +68,7 @@ export function brief(root, cfg) {
     '- Before a choice that is hard to reverse, check the decisions above; if it contradicts one, say so and run `/coda:decide` rather than deciding silently.',
     '- A decision is only made by a human. Record it with `/coda:decide`; do not write decision records on your own initiative.',
     `- Verification is ${cfg.verify.commands.length ? `enforced when you finish: ${cfg.verify.commands.map((c) => `\`${c}\``).join(', ')}` : 'not configured yet (`/coda:init` sets it)'}.`,
-    '- Skills: /coda:intent, /coda:decide, /coda:recall, /coda:graph, /coda:deliver, /coda:patterns, /coda:sync, /coda:audit, /coda:autonomy, /coda:status.');
+    '- Skills: /coda:intent, /coda:decide, /coda:recall, /coda:graph, /coda:deliver, /coda:patterns, /coda:sync, /coda:audit, /coda:autonomy, /coda:status, /coda:org.');
   return lines.join('\n');
 }
 
@@ -69,6 +90,7 @@ export function status(root, cfg) {
     intent: Boolean(intentSummary(root)?.purpose),
     decisions: { total: listRecords(root, 'decisions').length, inForce: activeDecisions(root).length },
     patterns: { total: listRecords(root, 'patterns').length, open: openPatterns(root).length },
+    organisation: (() => { try { return orgFacts(root, cfg, { refresh: 'never' }); } catch (e) { return { declared: true, readable: false, error: e.message }; } })(),
     graph: (() => { const g = buildGraph(root); return { entities: g.entities.length, links: g.edges.filter((e) => e.type !== 'mentions').length, openContradictions: g.contradictions, recurring: g.recurring, problems: g.problems.length }; })(),
     verification: { commands: cfg.verify.commands, requireReview: cfg.verify.requireReview, currentTreeVerified: fp !== null && verified.fp === fp, currentTreeReviewed: fp !== null && verified.reviewFp === fp },
     journal: { events: j.count, streams: j.files, intact: j.problems.length === 0, problems: j.problems.slice(0, 5) },
