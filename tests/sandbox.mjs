@@ -48,6 +48,8 @@ function makeTeam(dir, name) {
   fs.mkdirSync(dir, { recursive: true });
   const r = coda(dir, 'init', '--name', name, '--verify', 'true');
   if (r.status !== 0) throw new Error(r.stderr);
+  const s = coda(dir, 'scope', 'set', '--domain', name, '--component', `${name}-api`, '--by', 'Dana');
+  if (s.status !== 0) throw new Error(s.stderr);
 }
 
 /** One repository: .coda-org/ at the root, each team in teams/<name>/ with its own .coda/. */
@@ -82,6 +84,7 @@ export function multirepo({ constraint } = {}) {
   for (const name of TEAMS) {
     const r = coda(teams[name], 'org', 'join', '--repo', org, '--by', 'Dana');
     if (r.status !== 0) throw new Error(r.stderr);
+    commitAll(teams[name], 'adopt coda');
   }
   return { root: base, org, teams };
 }

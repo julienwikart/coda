@@ -12,8 +12,8 @@ import {
   fingerprint, loadState, saveState, loadVerified, saveVerified, runVerify, noteSession,
   COGNITIVE_AGENTS, CODA_DIR,
 } from './lib.mjs';
-import { brief } from './brief.mjs';
-import { resolveOrg, inOrgDir, ORG_DIR } from './org.mjs';
+import { brief, orgBrief } from './brief.mjs';
+import { resolveOrg, inOrgDir, findOrgRoot, orgAt, orgPath, teamsOf, owningTeam, ORG_DIR } from './org.mjs';
 
 const WRITE_TOOLS = new Set(['Write', 'Edit', 'MultiEdit', 'NotebookEdit']);
 
@@ -51,7 +51,8 @@ export function isCodaBookkeeping(command) {
   if (/[;&|<>`\n]|\$\(/.test(c)) return false;
   const m = /^node\s+("[^"]+"|'[^']+'|\S+)\s+([a-z-]+)/.exec(c);
   if (!m || !isOwnCli(m[1])) return false;
-  if (m[2] === 'org') return /^node\s+("[^"]+"|'[^']+'|\S+)\s+org\s+(status|sync)\b/.test(c); // reading, or refreshing the local copy
+  if (m[2] === 'org') return /^node\s+("[^"]+"|'[^']+'|\S+)\s+org\s+(status|sync|map|check)\b/.test(c);
+  if (m[2] === 'scope') return !/\sscope\s+set\b/.test(c); // reading, or refreshing the local copy
   return ['brief', 'status', 'doctor', 'list', 'next-id', 'journal', 'verify', 'graph'].includes(m[2]);
 }
 
@@ -86,7 +87,8 @@ export function isReadOnlyCommand(command) {
       if (words.some((w) => ['-delete', '-exec', '-execdir', '-ok', '-fprint', '-fprintf'].includes(w))) return false;
     } else if (cmd === 'node' && isOwnCli(sub)) {
       if (['level', 'init', 'verify'].includes(words[2])) return false;
-      if (words[2] === 'org' && words[3] !== 'status') return false;
+      if (words[2] === 'org' && !['status', 'map', 'check'].includes(words[3])) return false;
+      if (words[2] === 'scope' && words[3] === 'set') return false;
     } else if (!READ_ONLY.has(cmd)) return false;
   }
   return true;
@@ -114,6 +116,11 @@ export function decide(root, cfg, input) {
       if (orgRel.startsWith('journal/')) return { decision: 'deny', reason: 'The organisation journal is append-only and written by the harness.' };
       if (org?.source === 'remote') return { decision: 'deny', reason: `This is a read-only copy of the organisation repository (${org.location}). Changes are made there, by pull request.` };
       return { decision: 'ask', reason: `${ORG_DIR}/ holds what every team shares (intent, constraints, the list of teams). A human of the organisation decides each change.` };
+    }
+    // In a repository several teams share, another team's directory is not this team's to write in.
+    if (org && !org.error) {
+      let other = null; try { other = owningTeam(teamsOf(org, { selfRoot: root, selfName: cfg.team.name }), abs, cfg.team.name); } catch { /* map unreadable: generic rules apply */ }
+      if (other) return { decision: 'deny', team: other.name, reason: `${file} is in the directory of team "${other.name}". It is theirs to change: tell the human which team this request reaches, and stop there until the teams have agreed how to proceed.` };
     }
     if (rel === null) {
       const abs = path.resolve(root, String(file || ''));
@@ -146,6 +153,7 @@ export function decide(root, cfg, input) {
     if (!readOnly && cmd.includes(`${ORG_DIR}/`) && !isCodaBookkeeping(cmd)) return { decision: cognitive || level === 'observed' ? 'deny' : 'ask', reason: `This command acts on ${ORG_DIR}/, which holds what every team shares. A human of the organisation decides each change.` };
     if (isCodaBookkeeping(cmd)) return { decision: 'allow', reason: 'CODA bookkeeping (read, journal append or configured verification).' };
     if (readOnly) return { decision: null };
+    if (/coda\.mjs["']?\s+scope\s+set\b/.test(cmd)) return { decision: 'ask', reason: 'Declaring what a team carries is a human decision.' };
     if (/coda\.mjs["']?\s+org\s+(init|join|add-team)\b/.test(cmd)) return { decision: 'ask', reason: 'Creating an organisation, joining one or changing its list of teams is a human decision.' };
     if (/coda\.mjs["']?\s+level\b/.test(cmd)) return { decision: 'ask', reason: 'Changing the autonomy level is a human decision.' };
     if (cognitive) return { decision: 'deny', reason: `Cognitive agents (${actor.slice(6)}) only read: they cannot run commands that act on the project. Use Read, Grep and Glob, or plain read-only commands (cat, ls, grep, git log, git diff).` };
@@ -167,7 +175,7 @@ function preToolUse(root, cfg, input) {
   if (!d.decision) return;
   if (d.decision !== 'allow') {
     const ti = input.tool_input || {};
-    appendEvent(root, { type: d.decision === 'deny' ? 'guard.denied' : 'guard.asked', actor: actorOf(input), session: input.session_id, data: { tool: input.tool_name, target: ti.file_path ? relPath(root, ti.file_path) || ti.file_path : redact(ti.command, 120), level: cfg.autonomy.level, reason: d.reason } });
+    appendEvent(root, { type: d.decision === 'deny' ? 'guard.denied' : 'guard.asked', actor: actorOf(input), session: input.session_id, data: { tool: input.tool_name, target: ti.file_path ? relPath(root, ti.file_path) || ti.file_path : redact(ti.command, 120), level: cfg.autonomy.level, reason: d.reason, ...(d.team ? { otherTeam: d.team } : {}) } });
   }
   out({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: d.decision, permissionDecisionReason: `CODA: ${d.reason}` } });
 }
@@ -196,7 +204,7 @@ function subagentStart(root, cfg, input) {
 
 function subagentStop(root, cfg, input) {
   const agent = String(input.agent_type || 'unknown');
-  appendEvent(root, { type: 'run.end', actor: actorOf(input), session: input.session_id, data: { agent, run: input.agent_id || null } });
+  if (!input._quiet) appendEvent(root, { type: 'run.end', actor: actorOf(input), session: input.session_id, data: { agent, run: input.agent_id || null } });
   if (agent.replace(/^coda:/, '') !== 'verifier') return;
   const verdict = /CODA-VERDICT:\s*(PASS|FAIL)/i.exec(String(input.last_assistant_message || ''));
   if (!verdict) return;
@@ -217,12 +225,14 @@ function stop(root, cfg, input) {
   const giveUp = (why) => {
     appendEvent(root, { type: 'verify.unresolved', session: input.session_id, data: { fingerprint: fp, why } });
     out({ systemMessage: `CODA: stopping with unverified changes (${why}). Recorded in the journal as verify.unresolved — a human should look before this is accepted.` });
+    return true;
   };
   const block = (why, reason) => {
     state.blocks = (state.blocks || 0) + 1;
     saveState(root, input.session_id, state);
     if (state.blocks > (cfg.verify.maxBlocks || 3)) return giveUp(why);
     out({ decision: 'block', reason });
+    return true;
   };
 
   if (commands.length && verified.fp !== fp) {
@@ -238,6 +248,7 @@ function stop(root, cfg, input) {
   if (cfg.verify.requireReview && verified.reviewFp !== fp)
     return block('review missing', 'CODA verification gate: these changes have not been reviewed. Delegate a review of the current diff to the `coda:verifier` agent; it must end with `CODA-VERDICT: PASS`. If it fails, fix the findings and have it review again.');
   if (state.blocks) { state.blocks = 0; saveState(root, input.session_id, state); }
+  return false;
 }
 
 function sessionEnd(root, cfg, input) {
@@ -246,10 +257,115 @@ function sessionEnd(root, cfg, input) {
 
 const HANDLERS = { PreToolUse: preToolUse, PostToolUse: postToolUse, SessionStart: sessionStart, SubagentStart: subagentStart, SubagentStop: subagentStop, Stop: stop, SessionEnd: sessionEnd };
 
+// ------------------------------------------- a session at the organisation's root
+//
+// Started above every team, a session has no team of its own. A change to a
+// file is then judged by the rules of the team whose directory holds it, and
+// each team it touched must pass its own verification before the session ends.
+
+function teamOwningFile(orgDir, file) {
+  let dir = path.resolve(orgDir, String(file || ''));
+  try { dir = fs.realpathSync(fs.existsSync(dir) ? dir : path.dirname(dir)); } catch { dir = path.dirname(dir); }
+  const top = fs.realpathSync(orgDir);
+  for (;;) {
+    if (fs.existsSync(path.join(dir, CODA_DIR, 'config.json'))) return dir;
+    const parent = path.dirname(dir);
+    if (parent === dir || dir === top || path.relative(top, dir).startsWith('..')) return null;
+    dir = parent;
+  }
+}
+
+function orgState(orgDir, session) {
+  const file = orgPath(orgDir, '.state', `${String(session || 'local').replace(/[^A-Za-z0-9_-]/g, '').slice(0, 16)}.json`);
+  return {
+    get() { try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return { teams: [] }; } },
+    set(v) { fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file, JSON.stringify(v)); },
+  };
+}
+
+export function decideAtOrg(orgDir, input) {
+  const actor = actorOf(input);
+  const cognitive = COGNITIVE_AGENTS.includes(actor.slice(6));
+  const ti = input.tool_input || {};
+  if (WRITE_TOOLS.has(input.tool_name)) {
+    const file = ti.file_path || ti.notebook_path || ti.path;
+    const team = teamOwningFile(orgDir, file);
+    if (team) return { ...decide(team, loadConfig(team), { ...input, cwd: team }), teamRoot: team };
+    const abs = path.resolve(orgDir, String(file || ''));
+    const rel = relPath(orgDir, abs);
+    if (rel !== null && rel.startsWith(`${ORG_DIR}/`)) {
+      if (rel.startsWith(`${ORG_DIR}/journal/`) || rel.startsWith(`${ORG_DIR}/.state/`)) return { decision: 'deny', reason: 'The organisation journal is append-only and written by the harness.' };
+      if (cognitive) return { decision: 'deny', reason: 'Cognitive agents only read.' };
+      return { decision: 'ask', reason: `${ORG_DIR}/ holds what every team shares. A human of the organisation decides each change.` };
+    }
+    if (rel === null) {
+      const scratch = [os.tmpdir(), input.scratchpad_dir].filter(Boolean).some((d) => abs.startsWith(path.resolve(d) + path.sep));
+      if (scratch && !cognitive) return { decision: null };
+    }
+    return { decision: cognitive ? 'deny' : 'ask', reason: `${file} is carried by no team. A human decides changes outside every team's scope.` };
+  }
+  if (input.tool_name === 'Bash') {
+    const cmd = String(ti.command || '');
+    const readOnly = isReadOnlyCommand(cmd);
+    if (!readOnly && /\.coda(-org)?\/(journal|\.state)/.test(cmd)) return { decision: 'deny', reason: 'CODA journals are append-only: commands may read them, never modify them.' };
+    if (readOnly) return { decision: null };
+    if (cognitive) return { decision: 'deny', reason: 'Cognitive agents only read.' };
+    return { decision: 'ask', reason: 'This session started at the organisation\'s root, in no team\'s directory: a human approves each command that acts on the repository.' };
+  }
+  return { decision: null };
+}
+
+function orgSession(orgDir, input) {
+  const base = orgPath(orgDir);
+  const event = input.hook_event_name || process.argv[2];
+  const st = orgState(orgDir, input.session_id);
+  const touch = (team) => { const s = st.get(); if (!s.teams.includes(team)) { s.teams.push(team); st.set(s); } };
+  const ti = input.tool_input || {};
+  if (event === 'SessionStart') {
+    appendEvent(orgDir, { type: 'session.start', session: input.session_id, base, data: { source: input.source || 'startup', at: 'organisation root' } });
+    out({ hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: orgBrief(orgAt(orgDir)) } });
+  } else if (event === 'PreToolUse') {
+    const d = decideAtOrg(orgDir, input);
+    if (d.teamRoot) {
+      // The team's verification baseline is taken before the first change this session makes to it.
+      const ts = loadState(d.teamRoot, input.session_id);
+      if (!ts.baseline) { ts.baseline = fingerprint(d.teamRoot); ts.blocks = 0; saveState(d.teamRoot, input.session_id, ts); }
+    }
+    if (!d.decision) return;
+    if (d.decision !== 'allow') appendEvent(d.teamRoot || orgDir, { type: d.decision === 'deny' ? 'guard.denied' : 'guard.asked', actor: actorOf(input), session: input.session_id, ...(d.teamRoot ? {} : { base }), data: { tool: input.tool_name, target: ti.file_path ? relPath(orgDir, ti.file_path) || ti.file_path : redact(ti.command, 120), reason: d.reason } });
+    out({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: d.decision, permissionDecisionReason: `CODA: ${d.reason}` } });
+  } else if (event === 'PostToolUse') {
+    if (WRITE_TOOLS.has(input.tool_name)) {
+      const file = ti.file_path || ti.notebook_path || ti.path;
+      const team = teamOwningFile(orgDir, file);
+      if (team) { touch(team); postToolUse(team, loadConfig(team), input); }
+      else appendEvent(orgDir, { type: 'tool.write', actor: actorOf(input), session: input.session_id, base, data: { tool: input.tool_name, path: relPath(orgDir, file) || String(file) } });
+    } else if (input.tool_name === 'Bash' && !isReadOnlyCommand(ti.command)) {
+      appendEvent(orgDir, { type: 'tool.command', actor: actorOf(input), session: input.session_id, base, data: { command: redact(ti.command) } });
+    }
+  } else if (event === 'SubagentStart' || event === 'SubagentStop') {
+    appendEvent(orgDir, { type: event === 'SubagentStart' ? 'run.start' : 'run.end', actor: actorOf(input), session: input.session_id, base, data: { agent: input.agent_type || 'unknown', run: input.agent_id || null } });
+    if (event === 'SubagentStop') for (const team of st.get().teams) subagentStop(team, loadConfig(team), { ...input, agent_id: input.agent_id, _quiet: true });
+  } else if (event === 'Stop') {
+    for (const team of st.get().teams) if (stop(team, loadConfig(team), input)) return; // one gate at a time: the first team that is not verified holds the session
+  } else if (event === 'SessionEnd') {
+    appendEvent(orgDir, { type: 'session.end', session: input.session_id, base, data: { reason: input.reason || null } });
+  }
+}
+
 function main() {
   const input = readInput();
   const root = findRoot(input.cwd);
-  if (!root) return; // project has not adopted CODA
+  if (!root) {
+    // Not inside any team. If this is the root of an organisation, the session is judged team by team.
+    const orgDir = input.cwd ? findOrgRoot(input.cwd) : null;
+    if (!orgDir) return; // project has not adopted CODA
+    try { orgSession(orgDir, input); } catch (e) {
+      if ((input.hook_event_name || process.argv[2]) === 'PreToolUse' && (WRITE_TOOLS.has(input.tool_name) || input.tool_name === 'Bash')) out({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'ask', permissionDecisionReason: `CODA guard error (${e.message}); asking a human.` } });
+      else process.stderr.write(`coda hook: ${e.stack || e}\n`);
+    }
+    return;
+  }
   const handler = HANDLERS[input.hook_event_name || process.argv[2]];
   if (!handler) return;
   const cfg = loadConfig(root);

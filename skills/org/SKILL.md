@@ -26,8 +26,16 @@ A team in the same repository needs nothing. A team in another repository runs, 
 
 Each of these commands asks a human to approve it, and everything under `.coda-org/` is changed only with a human's approval, at every autonomy level: it defines what all teams are held to. When the organisation is in another repository, a team cannot change it from its own session at all; changes go to that repository by pull request.
 
+## Say who carries what
+
+Each team declares what it answers for, from its own directory: `coda scope set --by "<who>" --domain "<domain>" --component "<component>"` (several of each are fine). A domain is a part of the business the team owns the decisions for; a component is a piece of the system it maintains. Cut along the architecture: a scope that follows a real seam in the system can ship alone, one that follows the org chart cannot.
+
+Together the declarations form the map, and every team's brief carries it. `coda org map` shows it; `coda org check` lists overlaps — two teams declaring the same domain or component, or one team's directory inside another's — and gaps, such as a team that has declared nothing. An overlap is reported the moment it is declared and stays in the briefs of the teams concerned until it is settled. It is a fact for the humans to settle; do not pick a side or edit either declaration to make it go away.
+
+In a repository several teams share, the harness refuses any write in another team's directory, at every autonomy level. Across repositories there is no such wall: the map in the brief is what tells an agent it is about to reach into another team's scope.
+
 ## Inspect it
 
 `coda org status` shows the organisation this team belongs to, its teams, whether this team is registered, and, for a remote organisation, when its copy was last refreshed. `coda org sync` refreshes it now. If the brief says the organisation could not be read, say so plainly: the team is then working without the organisation's constraints in front of it.
 
-In a repository that holds several teams, start the session in the team's own directory: that is how the harness knows which team is working.
+In a repository that holds several teams, start the session in the team's own directory to deliver for that team. A session started at the root of the repository belongs to no team: it gets the organisation's brief, each file it changes is judged by the rules of the team that carries it, and commands that act on the repository ask a human.
