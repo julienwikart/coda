@@ -93,7 +93,7 @@ Smaller teams means more teams, so the transformation is decided by what links t
 
 This is where the gain is expected: coding alone may improve by 30 to 40%, but the team often gains under 10% if planning, testing and release stay manual ([Forrester, June 2026](https://forrester.com/blogs/agentic-software-development-takes-the-lead-from-code-assistants-to-orchestrated-sdlc-agents)).
 
-Version 0.1 of the plugin implements the team level. Sharing cognition across repositories is not built yet.
+What the plugin implements of this today: the organisation's intent, declared once in `.coda-org/` and delivered into the brief of every team's sessions, whether the teams share a repository or each have their own. Shared memory and patterns, the map of scopes, arbitration between teams, a guardian declared once and floors for the harness are not built yet.
 
 ## Position on people
 

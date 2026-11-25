@@ -24,4 +24,4 @@ When revising an existing intent, first ask the `coda:memory` agent which decisi
 
 Write the result to `.coda/intent.md`, keeping the section headings exactly (the brief reads them). In the frontmatter set `status: active`, increment `version`, set `architect` and `updated`. Then record it: `coda journal add intent.updated --data '{"version": N, "by": "<name>", "summary": "<what changed>"}' --actor human:<name>`.
 
-If the organisation has an intent above the team's, the team intent inherits its constraints and out-of-scope: copy them in, marked as inherited, and say where an objective here does not obviously serve one above.
+If the team belongs to an organisation (`coda org status`), the organisation's constraints and out-of-scope already bind the team and already reach every session through the brief. Do not copy them into the team intent: a copy goes stale the day the organisation changes. Write only what is specific to this team, check that nothing here relaxes or contradicts what the organisation holds, and say where a team objective does not obviously serve one of the organisation's.

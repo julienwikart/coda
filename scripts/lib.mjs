@@ -27,6 +27,9 @@ export const DEFAULT_CONFIG = {
   },
   verify: { commands: [], timeoutSeconds: 600, maxBlocks: 3, requireReview: false },
   journal: { commit: true, commands: 'redacted' },
+  // Link to an organisation: { path } (same checkout) or { repo, ref? } (another repository). Null: found by
+  // walking up to a .coda-org/ in the same repository, or no organisation at all.
+  org: null,
 };
 
 // ---------------------------------------------------------------- project root
@@ -178,9 +181,9 @@ export function streamId(session) {
  * session (so teammates never conflict in git), each line chained to the
  * previous one by hash so that edits and deletions are detectable.
  */
-export function appendEvent(root, { type, actor = 'harness', session, data = {} }) {
+export function appendEvent(root, { type, actor = 'harness', session, data = {}, base = codaPath(root) }) {
   const now = new Date();
-  const dir = codaPath(root, 'journal', now.toISOString().slice(0, 7));
+  const dir = path.join(base, 'journal', now.toISOString().slice(0, 7));
   fs.mkdirSync(dir, { recursive: true });
   const file = path.join(dir, `${streamId(session)}.jsonl`);
   return withLock(file + '.lock', () => {
@@ -193,8 +196,8 @@ export function appendEvent(root, { type, actor = 'harness', session, data = {} 
   });
 }
 
-export function journalFiles(root) {
-  const base = codaPath(root, 'journal');
+export function journalFiles(root, dir = codaPath(root)) {
+  const base = path.join(dir, 'journal');
   const out = [];
   if (!fs.existsSync(base)) return out;
   for (const month of fs.readdirSync(base).sort()) {
@@ -205,9 +208,9 @@ export function journalFiles(root) {
   return out;
 }
 
-export function readEvents(root, { since, types } = {}) {
+export function readEvents(root, { since, types, base } = {}) {
   const events = [];
-  for (const f of journalFiles(root)) {
+  for (const f of journalFiles(root, base)) {
     for (const line of fs.readFileSync(f, 'utf8').split('\n')) {
       if (!line.trim()) continue;
       try {
@@ -221,10 +224,10 @@ export function readEvents(root, { since, types } = {}) {
   return events.sort((a, b) => (a.ts < b.ts ? -1 : a.ts > b.ts ? 1 : a.seq - b.seq));
 }
 
-export function verifyJournal(root) {
+export function verifyJournal(root, base) {
   const problems = [];
   let count = 0;
-  for (const f of journalFiles(root)) {
+  for (const f of journalFiles(root, base)) {
     let prev = null; let seq = 0;
     const lines = fs.readFileSync(f, 'utf8').split('\n').filter((l) => l.trim());
     lines.forEach((line, i) => {
@@ -236,7 +239,7 @@ export function verifyJournal(root) {
       seq = e.seq; prev = line;
     });
   }
-  return { count, files: journalFiles(root).length, problems };
+  return { count, files: journalFiles(root, base).length, problems };
 }
 
 // ------------------------------------------------------------ git & fingerprint
@@ -361,9 +364,9 @@ export function slugify(s) {
   return String(s).normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 60) || 'untitled';
 }
 
-export function intentSummary(root) {
+export function intentSummary(root, file = codaPath(root, 'intent.md')) {
   try {
-    const { meta, body } = parseFrontmatter(fs.readFileSync(codaPath(root, 'intent.md'), 'utf8'));
+    const { meta, body } = parseFrontmatter(fs.readFileSync(file, 'utf8'));
     const section = (name) => {
       const m = new RegExp(`^##\\s+${name}\\s*\\n([\\s\\S]*?)(?=^##\\s|\\Z)`, 'm').exec(body + '\n## ');
       return m ? m[1].replace(/<!--[\s\S]*?-->/g, '').trim() : '';

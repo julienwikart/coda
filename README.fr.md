@@ -51,6 +51,7 @@ Trois étages, chacun ne parlant qu'à son voisin : les humains portent l'intent
 | `/coda:audit` | Les éléments pour l'Ethical Guardian. |
 | `/coda:autonomy` | Élargir ou réduire l'autonomie des agents, sur la foi du journal. |
 | `/coda:status` | Où en est l'équipe, et si le harness est réellement en place. |
+| `/coda:org` | Plusieurs équipes : l'intention et les contraintes de l'organisation, déclarées une fois et remises à chaque équipe. |
 
 Les commandes ne sont pas nécessaires pour que le harness agisse : dès que `.coda/` existe, toute session dans le projet reçoit le brief, les garde-fous, le journal et le portail de vérification.
 
