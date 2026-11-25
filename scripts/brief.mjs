@@ -75,7 +75,7 @@ export function orgBrief(o) {
   lines.push(...mapSection(o, {}));
   let teams = []; try { teams = teamsOf(o); } catch { /* fail open */ }
   for (const p of scopeProblems(teams)) lines.push(`- ${p}`);
-  lines.push('', 'Agents propose, humans decide. Skills: /coda:org, /coda:arbitrate, /coda:audit, /coda:status.');
+  lines.push('', 'Agents propose, humans decide. Skills: /coda:overview, /coda:org, /coda:arbitrate, /coda:audit.');
   return lines.join('\n');
 }
 
@@ -111,6 +111,8 @@ export function brief(root, cfg, opts = { refresh: 'never' }) {
     if (parts.length) lines.push(`**Floors set by the organisation** (a team may be stricter, never laxer) — ${parts.join('; ')}.`);
     if (f.stale) lines.push('_The organisation cannot be read right now: these are its floors as last read on this machine._');
   }
+  if (cfg.team.retired) lines.push('', `**This team was split${cfg.team.splitInto?.length ? ` into ${cfg.team.splitInto.join(', ')}` : ''}.** It carries nothing any more and nothing is delivered here: its records are history. Work happens in the teams that came out of it.`);
+  if (cfg.team.regrowth?.raised) lines.push('', `**Regrowth signal raised** on ${String(cfg.team.regrowth.raised).slice(0, 10)} by ${cfg.team.regrowth.by}: ${cfg.team.regrowth.note || 'no note'}. The team has said two humans are no longer enough for what it carries; the organisation has to answer.`);
   if (cfg._error) lines.push(`**Config problem:** ${cfg._error} — falling back to "observed". Tell the human.`);
 
   lines.push(...orgSection(root, cfg, opts));
@@ -136,7 +138,7 @@ export function brief(root, cfg, opts = { refresh: 'never' }) {
     '- Before a choice that is hard to reverse, check the decisions above; if it contradicts one, say so and run `/coda:decide` rather than deciding silently.',
     '- A decision is only made by a human. Record it with `/coda:decide`; do not write decision records on your own initiative.',
     `- Verification is ${cfg.verify.commands.length ? `enforced when you finish: ${cfg.verify.commands.map((c) => `\`${c}\``).join(', ')}` : 'not configured yet (`/coda:init` sets it)'}.`,
-    '- Skills: /coda:intent, /coda:decide, /coda:recall, /coda:graph, /coda:deliver, /coda:patterns, /coda:sync, /coda:audit, /coda:autonomy, /coda:status, /coda:org, /coda:arbitrate.');
+    '- Skills: /coda:intent, /coda:decide, /coda:recall, /coda:graph, /coda:deliver, /coda:patterns, /coda:sync, /coda:audit, /coda:autonomy, /coda:status, /coda:org, /coda:arbitrate, /coda:overview, /coda:split.');
   return lines.join('\n');
 }
 

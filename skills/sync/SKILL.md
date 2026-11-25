@@ -17,7 +17,7 @@ Then give the humans a brief they can read in two minutes:
 - **Alignment.** For each objective of the intent: what in this period served it, and whether nothing did. Decisions or deliveries that serve no objective are named — they are either drift or a sign the intent is missing something.
 - **Drift.** Anything that moved against a constraint or into what the intent declares out of scope. Quote the constraint and the evidence. If there is none, say there is none.
 - **Health of the system.** Verification failing or left unresolved, agents repeatedly stopped by the guard on the same thing, decisions taken without consulting the memory, decisions marked `decided` that have not moved.
-- **The regrowth signal.** State the signal the intent names and what the evidence says about it. If the intent names none, say that this is the gap to close first.
+- **The regrowth signal.** State the signal the intent names and what the evidence says about it. If the evidence says it has fired, say so first: raising it is the humans' call — `coda regrowth raise --by "<who>" --note "<what was observed>"` — and it is how the rest of the organisation learns that this team is too small for what it carries. If the intent names none, say that this is the gap to close first.
 - **One focus** for the coming period, as a proposal.
 
 Do not compute an alignment score: a number here would look like measurement and is not one. Separate what the records show from what you infer.

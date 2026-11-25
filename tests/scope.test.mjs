@@ -90,6 +90,8 @@ test('guard at the organisation root: each file is judged by the rules of the te
   assert.equal(at(write(path.join(teams.catalog, 'src/a.ts'), { agent_type: 'coda:coordination' })), 'deny', 'cognitive agents still only read');
   assert.equal(at(bash('npm test')), 'ask');
   assert.equal(at(bash('git status')), null);
+  assert.equal(at(bash(`node "${CLI}" org view --format md`)), 'allow', 'reading the organisation is never held up');
+  assert.equal(at(bash(`node "${CLI}" org floors set --by x`)), 'ask');
   assert.equal(at(bash('npm test', { agent_type: 'coda:memory' })), 'deny');
   assert.equal(at(bash('rm -rf .coda-org/journal')), 'deny');
 });
