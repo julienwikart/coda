@@ -5,16 +5,17 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {
   findRoot, codaPath, loadConfig, saveConfig, appendEvent, readEvents, verifyJournal,
-  nextId, slugify, listRecords, fingerprint, loadVerified, saveVerified, runVerify,
+  nextId, slugify, listRecords, intentSummary, fingerprint, loadVerified, saveVerified, runVerify,
   DEFAULT_CONFIG, LEVELS, ROLES, CODA_DIR, git, cliSession,
 } from './lib.mjs';
 import { brief, status } from './brief.mjs';
-import { resolveOrg, orgFacts, findOrgRoot, loadOrgFile, orgPath, parseHuman, orgAt, teamsOf, overlaps, scopeProblems, arbitration, orgGuardians, orgDecisions, arbitrationProblems, withFloors, normaliseFloors, ORG_DIR } from './org.mjs';
+import { resolveOrg, orgFacts, findOrgRoot, loadOrgFile, orgPath, parseHuman, orgAt, teamsOf, overlaps, scopeProblems, arbitration, orgGuardians, orgDecisions, arbitrationProblems, withFloors, normaliseFloors, orgView, viewMarkdown, ORG_DIR } from './org.mjs';
+import { parseInto, planSplit, createTeam, hasTeam } from './split.mjs';
 import { buildGraph, buildOrgGraph, bearingOn, neighbourhood, toMermaid, toMarkdown, parseEntity, ENTITY_TYPES, LINK_TYPES } from './graph.mjs';
 
 // Events only the harness may write: a model must not be able to claim that
 // verification passed or that a human changed the autonomy level.
-const RESERVED = ['session', 'run', 'tool', 'guard', 'verify', 'review', 'autonomy', 'coda', 'org', 'scope'];
+const RESERVED = ['session', 'run', 'tool', 'guard', 'verify', 'review', 'autonomy', 'coda', 'org', 'scope', 'team'];
 
 const USAGE = `coda — cognitive orchestration for delivery agents
 
@@ -41,6 +42,10 @@ const USAGE = `coda — cognitive orchestration for delivery agents
   coda org floors [set --by <human> [--protect <glob>]... [--deny-command <c>]... [--ask-command <c>]...
                   [--verify "<cmd>"]... [--require-review] [--max-level <level>]]
                                      what every team's harness must at least enforce
+  coda org view [--format md]        scopes carried, what is open between teams, who says they are too small
+  coda split --into "<team>=<dir>:<carries,…>"... --by <human> [--plan] [--assign <D-id>=<team,…>]...
+             [--keep "<carries,…>"]   split this team into sandwich teams; --plan shows who inherits what
+  coda regrowth [raise --by <human> --note "<what fired>" | clear --by <human>]
   coda org pending | audit           what waits between teams; evidence for a shared guardian
   coda org map | check               who carries what; overlaps and gaps (check exits 1 on an overlap)
   coda scope                         what this team declares it carries
@@ -269,6 +274,10 @@ function org(pos, opt) {
     if (unknown.length) fail(`${d.id} names team(s) the organisation does not list: ${unknown.join(', ')}.`);
     appendEvent(dir, { type: 'org.decision-recorded', actor: `human:${by}`, session: cliSession(dir), base: orgPath(dir), data: { id: d.id, maker, teams: d.teams, settles: d.settles } });
     console.log(`${d.id} recorded. It binds ${d.teams.length && !d.teams.includes('all') ? d.teams.join(', ') : 'every team'} and reaches their briefs at their next session.`);
+  } else if (sub === 'view') {
+    const { o, teams } = orgContext();
+    const v = orgView(o, teams);
+    console.log(opt.format === 'md' ? viewMarkdown(v) : JSON.stringify(v, null, 2));
   } else if (sub === 'pending') {
     // What is waiting for the humans between teams. Facts, in the order the teams are listed; nothing is ranked.
     const { o, teams } = orgContext();
@@ -293,7 +302,7 @@ function org(pos, opt) {
       };
     });
     console.log(JSON.stringify({ organisation: o.name, guardians: orgGuardians(o.org).map((h) => h.name), arbitration: arbitration(o.org), teams: perTeam, betweenTeams: { contradictions: g.betweenTeams, overlaps: overlaps(teams) }, organisationDecisions: { total: decided.length, problems: arbitrationProblems(o, decided) } }, null, 2));
-  } else fail('org: use init, add-team, join, status, sync, map, check, decisions, rule, floors, next-id, record, pending or audit.');
+  } else fail('org: use init, add-team, join, status, sync, map, check, view, decisions, rule, floors, next-id, record, pending or audit.');
 }
 
 /** The organisation's directory when it can be written from here: never through a read-only copy. */
@@ -310,6 +319,63 @@ function orgContext() {
   if (!o) fail('no organisation here: this is neither a team that belongs to one nor an organisation\'s root.');
   if (o.error) fail(o.error);
   return { o, root, cfg, teams: teamsOf(o, { selfRoot: root, selfName: cfg?.team?.name }) };
+}
+
+/** Split this team into several sandwich teams. */
+function split(root, opt) {
+  const cfg = loadConfig(root); if (cfg._error) fail(cfg._error);
+  if (cfg.team.retired) fail('this team was already split.');
+  const intos = list(opt.into).map((s) => { const t = parseInto(s); if (t.error) fail(`--into ${t.error}`); return t; });
+  if (intos.length < (opt.keep ? 1 : 2)) fail('a split makes at least two teams: give --into twice, or once with --keep "<what this team keeps>".');
+  if (new Set(intos.map((t) => t.name)).size !== intos.length || intos.some((t) => t.name === cfg.team.name)) fail('each new team needs a name of its own.');
+  const overrides = Object.fromEntries(list(opt.assign).map((a) => { const [id, to = ''] = a.split('='); return [id, to.split(',').map((x) => x.trim()).filter(Boolean)]; }));
+  const plan = planSplit(root, intos, overrides);
+  const kept = opt.keep && opt.keep !== true ? [...new Set(String(opt.keep).split(',').map((x) => slugify(x)).filter(Boolean))] : null;
+  const claimed = [...intos.flatMap((t) => t.carries.map((c) => [c, t.name])), ...(kept || []).map((c) => [c, cfg.team.name])];
+  const twice = claimed.filter(([c, n], i) => claimed.some(([c2, n2], j) => j !== i && c2 === c && n2 !== n)).map(([c]) => c);
+  if (twice.length) fail(`"${[...new Set(twice)].join('", "')}" would be carried by two teams. A split gives each scope to one team.`);
+  if (opt.plan) { console.log(JSON.stringify({ from: cfg.team.name, into: intos, keeps: kept, inherits: plan.teams, why: plan.why, openPatternsGoToAll: plan.patterns }, null, 2)); return; }
+  const by = who(opt);
+  for (const t of intos) { t.root = path.resolve(root, t.dir); if (hasTeam(t.root)) fail(`${t.dir} already holds a team.`); }
+  const when = new Date().toISOString();
+  let o = null; try { o = resolveOrg(root, cfg, { refresh: 'never' }); } catch { /* split without an organisation */ }
+  const orgWritable = o && !o.error && o.source === 'local';
+  for (const t of intos) {
+    createTeam(root, cfg, t.root, t, plan, when);
+    appendEvent(t.root, { type: 'team.created', actor: `human:${by}`, session: cliSession(root), data: { splitFrom: cfg.team.name, carries: t.carries, inherited: plan.teams[t.name], level: cfg.autonomy.level } });
+    if (orgWritable) {
+      const rel = path.relative(o.dir, t.root);
+      if (!rel.startsWith('..') && !o.org.teams.some((x) => x.name === t.name)) { o.org.teams.push({ name: t.name, path: rel.split(path.sep).join('/') }); appendEvent(o.dir, { type: 'org.team-added', actor: `human:${by}`, session: cliSession(root), base: orgPath(o.dir), data: { team: t.name, path: rel, splitFrom: cfg.team.name } }); }
+    }
+  }
+  if (kept) cfg.scope = { ...cfg.scope, domains: kept, components: [] };
+  else { cfg.team.retired = true; cfg.team.splitInto = intos.map((t) => t.name); cfg.scope = { domains: [], components: [], paths: [] }; }
+  saveConfig(root, cfg);
+  appendEvent(root, { type: 'team.split', actor: `human:${by}`, session: cliSession(root), data: { into: intos.map((t) => ({ name: t.name, carries: t.carries, inherited: plan.teams[t.name] })), keeps: kept } });
+  if (orgWritable) {
+    const me = o.org.teams.find((x) => x.name === cfg.team.name);
+    if (me && !kept) { me.retired = true; me.splitInto = intos.map((t) => t.name); }
+    fs.writeFileSync(orgPath(o.dir, 'org.json'), JSON.stringify(o.org, null, 2) + '\n');
+    appendEvent(o.dir, { type: 'org.team-split', actor: `human:${by}`, session: cliSession(root), base: orgPath(o.dir), data: { team: cfg.team.name, into: intos.map((t) => t.name), keeps: kept } });
+  }
+  console.log(`${cfg.team.name} split into ${intos.map((t) => `${t.name} (${plan.teams[t.name].length} decision(s) inherited)`).join(', ')}${kept ? `; ${cfg.team.name} keeps ${kept.join(', ')}` : `; ${cfg.team.name} carries nothing any more and its records stay as history`}.`);
+  console.log('Each new team starts with a draft intent and no humans declared: its two humans write the intent (/coda:intent) and are added to its config. The code is not moved for you.');
+  if (o && !orgWritable) console.log(`The organisation is read from ${o.location || 'elsewhere'}: register the new teams there with \`coda org add-team\`.`);
+}
+
+/** The team's humans say that the signal named in their intent has fired. A declaration, so other teams and the organisation can see it. */
+function regrowth(root, pos, opt) {
+  const cfg = loadConfig(root); if (cfg._error) fail(cfg._error);
+  if (!pos[0]) { console.log(JSON.stringify({ signal: intentSummary(root)?.regrowth || null, raised: cfg.team.regrowth || null }, null, 2)); return; }
+  const by = who(opt);
+  if (pos[0] === 'raise') {
+    if (!opt.note || opt.note === true) fail('--note "<what was observed>" is required: the signal fires on evidence.');
+    cfg.team.regrowth = { raised: new Date().toISOString(), by, note: String(opt.note) };
+  } else if (pos[0] === 'clear') delete cfg.team.regrowth;
+  else fail('regrowth: use raise or clear.');
+  saveConfig(root, cfg);
+  appendEvent(root, { type: pos[0] === 'raise' ? 'team.regrowth-raised' : 'team.regrowth-cleared', actor: `human:${by}`, session: cliSession(root), data: pos[0] === 'raise' ? { note: String(opt.note) } : {} });
+  console.log(pos[0] === 'raise' ? `Regrowth signal raised by ${by}. It shows in the organisation's view until it is cleared.` : 'Regrowth signal cleared.');
 }
 
 function scope(root, pos, opt) {
@@ -436,6 +502,8 @@ switch (cmd) {
   case 'brief': { const root = needRoot(); console.log(brief(root, withFloors(root, loadConfig(root)))); break; }
   case 'org': org(pos, opt); break;
   case 'scope': scope(needRoot(), pos, opt); break;
+  case 'split': split(needRoot(), opt); break;
+  case 'regrowth': regrowth(needRoot(), pos, opt); break;
   case 'status': { const root = needRoot(); console.log(JSON.stringify(status(root, withFloors(root, loadConfig(root))), null, 2)); break; }
   case 'next-id': {
     const root = needRoot();

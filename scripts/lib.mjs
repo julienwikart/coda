@@ -377,6 +377,6 @@ export function intentSummary(root, file = codaPath(root, 'intent.md')) {
       const m = new RegExp(`^##\\s+${name}\\s*\\n([\\s\\S]*?)(?=^##\\s|\\Z)`, 'm').exec(body + '\n## ');
       return m ? m[1].replace(/<!--[\s\S]*?-->/g, '').trim() : '';
     };
-    return { meta, purpose: section('Purpose'), constraints: section('Non-negotiable constraints'), outOfScope: section('Out of scope'), body };
+    return { meta, purpose: section('Purpose'), constraints: section('Non-negotiable constraints'), outOfScope: section('Out of scope'), regrowth: section('Regrowth signal'), body };
   } catch { return null; }
 }

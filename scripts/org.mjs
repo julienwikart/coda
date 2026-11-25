@@ -9,6 +9,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { codaPath, git, intentSummary, slugify, listRecords, ROLES, LEVELS, CODA_DIR } from './lib.mjs';
+import { buildOrgGraph } from './graph.mjs';
 
 export const ORG_DIR = '.coda-org';
 const STALE_AFTER_MS = 15 * 60 * 1000;
@@ -176,12 +177,13 @@ export function orgAt(dir) {
  * the same repository is read from disk; one in its own repository from a
  * read-only copy. Only declarations are read across teams — never journals.
  */
-export function teamsOf(o, { selfRoot = null, selfName = null, refresh = 'never', timeoutMs = 8000 } = {}) {
+export function teamsOf(o, { selfRoot = null, selfName = null, refresh = 'never', timeoutMs = 8000, includeRetired = false } = {}) {
   if (!o || o.error) return [];
   const cache = selfRoot ? teamCache(selfRoot) : orgCache(o.dir);
   // Refreshing must never hold a session hostage: past the budget, the copies already here serve.
   const started = Date.now(); const budget = Math.max(timeoutMs, 10000);
-  return o.org.teams.map((t) => {
+  // A team that was split into others stays in the list as history; it carries nothing any more.
+  return o.org.teams.filter((t) => includeRetired || !t.retired).map((t) => {
     if (refresh !== 'now' && Date.now() - started > budget) refresh = 'never';
     const isSelf = Boolean(selfName) && t.name === selfName;
     let root = null; let note = null; let fetchedAt = null;
@@ -198,6 +200,9 @@ export function teamsOf(o, { selfRoot = null, selfName = null, refresh = 'never'
       root: root && (t.path || isSelf) ? real(root) : null, // only teams sharing this checkout have a place on disk that matters to the guard
       readable: Boolean(raw), note, fetchedAt,
       declaredName: raw?.team?.name ?? null,
+      retired: Boolean(t.retired), splitInto: Array.isArray(t.splitInto) ? t.splitInto : [],
+      // Declared by the team's humans when the signal named in their intent has fired.
+      regrowth: raw?.team?.regrowth && typeof raw.team.regrowth === 'object' ? raw.team.regrowth : null,
       scope: { domains: names(scope.domains), components: names(scope.components), paths: Array.isArray(scope.paths) ? scope.paths.map(String) : ['**'] },
     };
   });
@@ -331,4 +336,59 @@ export function withFloors(root, cfg) {
     verify: { ...cfg.verify, commands: strings([...floors.verify.commands, ...cfg.verify.commands]), requireReview: cfg.verify.requireReview || floors.verify.requireReview },
     _floors: { ...floors, stale, declaredLevel: cfg.autonomy.level, capped: Boolean(capped), organisation: o.name || null },
   };
+}
+
+// ------------------------------------------------------------ organisation view
+
+const short = (s, n) => { const t = String(s || '').replace(/\s+/g, ' ').trim(); return t.length > n ? t.slice(0, n - 1) + '…' : t; };
+
+/**
+ * What the organisation's humans would otherwise meet to find out: which
+ * scopes are carried, what is open between teams, what waits for a decision,
+ * which teams have said they are too small. Teams come in the order the
+ * organisation lists them, with what they declare — no counts of activity,
+ * no levels side by side, nothing that could be read as a ranking.
+ */
+export function orgView(o, teams) {
+  const decided = orgDecisions(o);
+  const g = buildOrgGraph(teams, decided);
+  const rows = teams.map((t) => {
+    const intent = t.dir ? intentSummary(null, path.join(t.dir, CODA_DIR, 'intent.md')) : null;
+    return {
+      team: t.name, readable: t.readable, note: t.readable ? null : t.note,
+      carries: { domains: t.scope.domains, components: t.scope.components },
+      intent: intent?.purpose ? (intent.meta.status === 'draft' ? 'draft' : 'active') : 'missing',
+      regrowthSignal: intent?.regrowth ? short(intent.regrowth, 200) : null,
+      regrowthRaised: t.regrowth?.raised ? { since: t.regrowth.raised, by: t.regrowth.by || null, note: t.regrowth.note || null } : null,
+    };
+  });
+  const carried = rows.filter((r) => r.readable && (r.carries.domains.length || r.carries.components.length));
+  return {
+    organisation: o.name,
+    intent: o.intent?.purpose ? (o.intent.meta.status === 'draft' ? 'draft' : 'active') : 'missing',
+    // The measure of the organisation is how many scopes are carried, not how many people it has.
+    scopesCarried: carried.length,
+    teams: rows,
+    retired: o.org.teams.filter((t) => t.retired).map((t) => ({ team: t.name, splitInto: t.splitInto || [] })),
+    betweenTeams: { overlaps: overlaps(teams), contradictions: g.betweenTeams, recurring: g.recurring },
+    awaitingDecision: { arbiter: arbitration(o.org).arbiter, contradictions: g.betweenTeams.length, overlaps: overlaps(teams).length, problems: arbitrationProblems(o, decided) },
+    decisionsInForce: decided.filter((d) => d.inForce).map((d) => ({ id: d.id, title: d.title.replace(new RegExp(`^${d.id}\\s+`), ''), binds: d.teams.length && !d.teams.includes('all') ? d.teams : 'every team' })),
+    regrowthRaised: rows.filter((r) => r.regrowthRaised).map((r) => ({ team: r.team, ...r.regrowthRaised, signal: r.regrowthSignal })),
+    gaps: [...scopeProblems(teams), ...rows.filter((r) => r.readable && !r.regrowthSignal).map((r) => `team "${r.team}" has not named its regrowth signal`), ...rows.filter((r) => r.readable && r.intent !== 'active').map((r) => `team "${r.team}" has no intent in force (${r.intent})`)],
+  };
+}
+
+export function viewMarkdown(v) {
+  const L = [`# ${v.organisation}`, '', `${v.scopesCarried} scope(s) carried. Intent of the organisation: ${v.intent}.`, '', '## Who carries what', '', '| Team | Carries | Intent | Regrowth signal |', '|---|---|---|---|'];
+  for (const t of v.teams) L.push(`| ${t.team} | ${t.readable ? [...t.carries.domains, ...t.carries.components].join(', ') || 'nothing declared' : `not readable: ${t.note}`} | ${t.readable ? t.intent : '—'} | ${t.regrowthRaised ? `**raised** ${String(t.regrowthRaised.since).slice(0, 10)}` : t.regrowthSignal ? 'named, not raised' : 'not named'} |`);
+  L.push('', '## Open between teams', '');
+  const open = [...v.betweenTeams.overlaps.map((x) => `- Overlap: ${x.teams.join(' and ')} both declare the ${x.kind} "${x.what}".`), ...v.betweenTeams.contradictions.map((c) => `- Contradiction: ${c.between.join(' and ')} are both in force.`)];
+  L.push(...(open.length ? open : ['Nothing.']));
+  if (open.length) L.push('', `These wait for ${v.awaitingDecision.arbiter || 'an arbiter the organisation has not named'}.`);
+  if (v.betweenTeams.recurring.length) L.push('', '## Recurring across teams', '', ...v.betweenTeams.recurring.map((r) => `- \`${r.entity}\` — ${r.decisions.join(', ')}`));
+  if (v.regrowthRaised.length) L.push('', '## Teams that say they are too small', '', ...v.regrowthRaised.map((r) => `- ${r.team}, since ${String(r.since).slice(0, 10)}${r.note ? `: ${r.note}` : ''}`));
+  if (v.decisionsInForce.length) L.push('', '## Decisions of the organisation in force', '', ...v.decisionsInForce.map((d) => `- ${d.id} ${d.title} — binds ${Array.isArray(d.binds) ? d.binds.join(', ') : d.binds}`));
+  if (v.retired.length) L.push('', '## Split', '', ...v.retired.map((r) => `- ${r.team} → ${r.splitInto.join(', ') || '?'}`));
+  if (v.awaitingDecision.problems.length || v.gaps.length) L.push('', '## Gaps', '', ...[...v.awaitingDecision.problems, ...v.gaps].map((p) => `- ${p}`));
+  return L.join('\n') + '\n';
 }

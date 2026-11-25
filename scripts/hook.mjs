@@ -51,8 +51,10 @@ export function isCodaBookkeeping(command) {
   if (/[;&|<>`\n]|\$\(/.test(c)) return false;
   const m = /^node\s+("[^"]+"|'[^']+'|\S+)\s+([a-z-]+)/.exec(c);
   if (!m || !isOwnCli(m[1])) return false;
-  if (m[2] === 'org') return /^node\s+("[^"]+"|'[^']+'|\S+)\s+org\s+(status|sync|map|check|decisions|pending|audit|next-id|(rule|floors)(?!\s+set))\b/.test(c);
-  if (m[2] === 'scope') return !/\sscope\s+set\b/.test(c); // reading, or refreshing the local copy
+  if (m[2] === 'org') return /^node\s+("[^"]+"|'[^']+'|\S+)\s+org\s+(status|sync|map|check|decisions|pending|audit|view|next-id|(rule|floors)(?!\s+set))\b/.test(c);
+  if (m[2] === 'scope') return !/\sscope\s+set\b/.test(c);
+  if (m[2] === 'split') return /\s--plan\b/.test(c); // a plan writes nothing
+  if (m[2] === 'regrowth') return !/\sregrowth\s+(raise|clear)\b/.test(c); // reading, or refreshing the local copy
   return ['brief', 'status', 'doctor', 'list', 'next-id', 'journal', 'verify', 'graph'].includes(m[2]);
 }
 
@@ -87,8 +89,10 @@ export function isReadOnlyCommand(command) {
       if (words.some((w) => ['-delete', '-exec', '-execdir', '-ok', '-fprint', '-fprintf'].includes(w))) return false;
     } else if (cmd === 'node' && isOwnCli(sub)) {
       if (['level', 'init', 'verify'].includes(words[2])) return false;
-      if (words[2] === 'org' && !(['status', 'map', 'check', 'decisions', 'pending', 'audit', 'next-id'].includes(words[3]) || (['rule', 'floors'].includes(words[3]) && words[4] !== 'set'))) return false;
+      if (words[2] === 'org' && !(['status', 'map', 'check', 'decisions', 'pending', 'audit', 'next-id'].includes(words[3]) || words[3] === 'view' || (['rule', 'floors'].includes(words[3]) && words[4] !== 'set'))) return false;
       if (words[2] === 'scope' && words[3] === 'set') return false;
+      if (words[2] === 'split' && !words.includes('--plan')) return false;
+      if (words[2] === 'regrowth' && ['raise', 'clear'].includes(words[3])) return false;
     } else if (!READ_ONLY.has(cmd)) return false;
   }
   return true;
@@ -153,6 +157,7 @@ export function decide(root, cfg, input) {
     if (!readOnly && cmd.includes(`${ORG_DIR}/`) && !isCodaBookkeeping(cmd)) return { decision: cognitive || level === 'observed' ? 'deny' : 'ask', reason: `This command acts on ${ORG_DIR}/, which holds what every team shares. A human of the organisation decides each change.` };
     if (isCodaBookkeeping(cmd)) return { decision: 'allow', reason: 'CODA bookkeeping (read, journal append or configured verification).' };
     if (readOnly) return { decision: null };
+    if (/coda\.mjs["']?\s+(split|regrowth\s+(raise|clear))\b/.test(cmd) && !/\s--plan\b/.test(cmd)) return { decision: cognitive ? 'deny' : 'ask', reason: 'Splitting a team, and saying that its regrowth signal has fired, are human decisions.' };
     if (/coda\.mjs["']?\s+scope\s+set\b/.test(cmd)) return { decision: 'ask', reason: 'Declaring what a team carries is a human decision.' };
     if (/coda\.mjs["']?\s+org\s+(init|join|add-team)\b/.test(cmd)) return { decision: 'ask', reason: 'Creating an organisation, joining one or changing its list of teams is a human decision.' };
     if (/coda\.mjs["']?\s+org\s+(record|(rule|floors)\s+set)\b/.test(cmd)) return { decision: cognitive ? 'deny' : 'ask', reason: 'A decision between teams, and the rule that says who takes it, are a human\'s.' };
@@ -259,7 +264,11 @@ function sessionEnd(root, cfg, input) {
 const HANDLERS = { PreToolUse: preToolUse, PostToolUse: postToolUse, SessionStart: sessionStart, SubagentStart: subagentStart, SubagentStop: subagentStop, Stop: stop, SessionEnd: sessionEnd };
 
 /** What the harness enforces for a team: its own configuration, tightened by its organisation's floors. */
-export const enforced = (root) => withFloors(root, loadConfig(root));
+export const enforced = (root) => {
+  const cfg = withFloors(root, loadConfig(root));
+  // A team that was split into others delivers nothing any more: its directory is history.
+  return cfg.team?.retired ? { ...cfg, autonomy: { ...cfg.autonomy, level: 'observed' } } : cfg;
+};
 
 // ------------------------------------------- a session at the organisation's root
 //
@@ -312,6 +321,8 @@ export function decideAtOrg(orgDir, input) {
     const cmd = String(ti.command || '');
     const readOnly = isReadOnlyCommand(cmd);
     if (!readOnly && /\.coda(-org)?\/(journal|\.state)/.test(cmd)) return { decision: 'deny', reason: 'CODA journals are append-only: commands may read them, never modify them.' };
+    // Reading the organisation through the CODA CLI never interrupts the humans, here either.
+    if (isCodaBookkeeping(cmd)) return { decision: 'allow', reason: 'CODA bookkeeping (reading the organisation, or refreshing its copies).' };
     if (readOnly) return { decision: null };
     if (cognitive) return { decision: 'deny', reason: 'Cognitive agents only read.' };
     return { decision: 'ask', reason: 'This session started at the organisation\'s root, in no team\'s directory: a human approves each command that acts on the repository.' };

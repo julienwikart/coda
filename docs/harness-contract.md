@@ -25,6 +25,8 @@ A decision taken for several teams (`.coda-org/decisions/X-0001-….md`) reaches
 | Edit `.coda/config.json`, change level | ask | ask | ask |
 | Write in another team's directory (shared repository) | deny | deny | deny |
 | Edit anything under `.coda-org/` | ask | ask | ask |
+| Split a team, raise or clear its regrowth signal | ask | ask | ask |
+| Any write or acting command in a team that was split | deny | deny | deny |
 | Edit the organisation's journal, or the local copy of a remote organisation | deny | deny | deny |
 
 An organisation may set floors (`floors` in `.coda-org/org.json`): paths protected for every team, commands never run, commands that always ask, verification commands that always run, a required review, a cap on the autonomy level. What the guard and the gates enforce is the team's configuration tightened by them: lists are unions and the level is the lower of the two, so a team can be stricter and nothing in a team's own configuration makes it laxer.
@@ -54,6 +56,8 @@ Stated plainly, so nobody delegates on a false assumption:
 - **Other teams are as fresh as what they committed and what was last fetched.** In one repository, your checkout; across repositories, the default branch of each team as of the last fetch.
 - **Floors are as fresh as the organisation's last read.** In one repository, the checkout. Across repositories, the copy fetched at session start: a team that stays offline keeps the floors it last fetched, old or new. Nothing here can push a floor to a machine.
 - **Floors hold for a team that has an organisation.** A team whose link to its organisation is removed has none; in a shared repository that means deleting `.coda-org/`, which asks a human and shows in the diff. Review is what protects the link.
+- **A split creates teams, not a working organisation.** Each new team receives its scope, the harness configuration and level of the team it comes from, the decisions in force that concern it and a draft intent. It does not receive humans, an intent in force, or its code: those are the humans' to do, and `coda doctor` says what is missing. Which decision goes to which team is computed from entities and corrected by a human; a decision without entities goes to every new team.
+- **The organisation view shows declarations.** A regrowth signal appears when the team's humans raise it; nothing detects that a team is too small. The view holds no measure of activity and no headcount, by construction.
 - **A decision of the organisation binds through the brief, not through the guard.** Every agent of a team it names is told; nothing mechanically stops a change that goes against it. The check that its maker is the named arbiter is made when it is recorded: a record added to `.coda-org/decisions/` by pull request without `coda org record` still reaches the briefs, and `coda org pending` reports it as taken by the wrong person.
 - **A shared guardian sees audits and records, not journals.** What a team's agents did is audited inside that team; the view across teams is built from each team's audit reports and decision records.
 - **Overlaps are detected between declarations, not between realities.** Two teams declaring the same domain or component is reported at once. Two teams working on the same thing under different names is not.
@@ -82,8 +86,9 @@ One JSON object per line, in `.coda/journal/<YYYY-MM>/<session>.jsonl`:
 | `verify` | `passed`, `failed`, `unresolved` | harness |
 | `review` | `passed`, `failed` | harness |
 | `autonomy` | `changed` | harness, on a human's decision |
-| `org` | `initialized`, `team-added`, `joined`, `rule-set`, `floors-set`, `decision-recorded` | harness, on a human's decision |
+| `org` | `initialized`, `team-added`, `team-split`, `joined`, `rule-set`, `floors-set`, `decision-recorded` | harness, on a human's decision |
 | `scope` | `declared` | harness, on a human's decision |
+| `team` | `split`, `created`, `regrowth-raised`, `regrowth-cleared` | harness, on a human's decision |
 | `decision`, `intent`, `pattern`, `memory`, `audit`, `delivery` | `recorded`, `updated`, `sync`, `reviewed`, `recall`, `completed` | skills, via `coda journal add` |
 
 ## Adapting another harness

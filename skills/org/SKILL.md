@@ -56,6 +56,10 @@ The harness enforces a team's configuration tightened by the floors: protected p
 
 If a team's organisation cannot be read, its last floors read on that machine keep applying; a team that never read them drops to `observed` until it can. That is the one place where the organisation blocks rather than warns.
 
+## The whole at a glance, and splitting a team
+
+`/coda:overview` shows the scopes carried, what is open between teams and which teams have said they are too small; it stands in for a synchronisation meeting. `/coda:split` turns one team into several sandwich teams, each with its scope and the decisions that concern it.
+
 ## Inspect it
 
 `coda org status` shows the organisation this team belongs to, its teams, whether this team is registered, and, for a remote organisation, when its copy was last refreshed. `coda org sync` refreshes it now. If the brief says the organisation could not be read, say so plainly: the team is then working without the organisation's constraints in front of it.
