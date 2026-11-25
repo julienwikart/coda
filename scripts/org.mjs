@@ -8,7 +8,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { execFileSync } from 'node:child_process';
-import { codaPath, git, intentSummary, slugify, listRecords, ROLES, CODA_DIR } from './lib.mjs';
+import { codaPath, git, intentSummary, slugify, listRecords, ROLES, LEVELS, CODA_DIR } from './lib.mjs';
 
 export const ORG_DIR = '.coda-org';
 const STALE_AFTER_MS = 15 * 60 * 1000;
@@ -278,4 +278,57 @@ export function arbitrationProblems(o, decisions = orgDecisions(o)) {
     for (const t of d.teams) if (t !== 'all' && !known.has(t)) out.push(`${d.id} names team "${t}", which the organisation does not list`);
   }
   return out;
+}
+
+// --------------------------------------------------------------------- floors
+
+const strings = (v) => [...new Set((Array.isArray(v) ? v : []).map(String).filter(Boolean))];
+
+/** What the organisation requires of every team's harness. A team may be stricter; it cannot be laxer. */
+export function normaliseFloors(raw) {
+  const f = raw && typeof raw === 'object' ? raw : {};
+  return {
+    protected: strings(f.protected), denyCommands: strings(f.denyCommands), askCommands: strings(f.askCommands),
+    verify: { commands: strings(f.verify?.commands), requireReview: f.verify?.requireReview === true },
+    maxLevel: LEVELS.includes(f.maxLevel) ? f.maxLevel : null,
+  };
+}
+
+export const floorsEmpty = (f) => !f.protected.length && !f.denyCommands.length && !f.askCommands.length && !f.verify.commands.length && !f.verify.requireReview && !f.maxLevel;
+
+/**
+ * The configuration the harness actually enforces: what the team declares,
+ * tightened by the organisation's floors. Lists are unions, so a team can add
+ * and never remove; the level is the lower of the two.
+ *
+ * This is the one place where the organisation fails closed. If a team has an
+ * organisation and its floors cannot be read, the last floors read on this
+ * machine apply; with none, the team drops to "observed". An unreadable
+ * organisation never widens what agents may do.
+ */
+export function withFloors(root, cfg) {
+  let o; try { o = resolveOrg(root, cfg, { refresh: 'never' }); } catch (e) { o = { declared: true, error: e.message }; }
+  if (!o) return cfg;
+  const cacheFile = codaPath(root, '.state', 'floors.json');
+  let floors; let stale = false;
+  if (o.error) {
+    try { floors = normaliseFloors(JSON.parse(fs.readFileSync(cacheFile, 'utf8'))); stale = true; } catch {
+      return { ...cfg, autonomy: { ...cfg.autonomy, level: 'observed' }, _error: `the organisation's floors cannot be read (${o.error}) and no earlier copy exists on this machine`, _floors: { unreadable: true } };
+    }
+  } else {
+    floors = normaliseFloors(o.org.floors);
+    try { fs.mkdirSync(path.dirname(cacheFile), { recursive: true }); fs.writeFileSync(cacheFile, JSON.stringify(floors)); } catch { /* the copy is a convenience */ }
+  }
+  const p = cfg.autonomy.perimeter;
+  const capped = floors.maxLevel && LEVELS.indexOf(cfg.autonomy.level) > LEVELS.indexOf(floors.maxLevel);
+  return {
+    ...cfg,
+    autonomy: {
+      ...cfg.autonomy,
+      level: capped ? floors.maxLevel : cfg.autonomy.level,
+      perimeter: { ...p, protected: strings([...floors.protected, ...p.protected]), denyCommands: strings([...floors.denyCommands, ...p.denyCommands]), askCommands: strings([...floors.askCommands, ...p.askCommands]) },
+    },
+    verify: { ...cfg.verify, commands: strings([...floors.verify.commands, ...cfg.verify.commands]), requireReview: cfg.verify.requireReview || floors.verify.requireReview },
+    _floors: { ...floors, stale, declaredLevel: cfg.autonomy.level, capped: Boolean(capped), organisation: o.name || null },
+  };
 }

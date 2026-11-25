@@ -81,6 +81,8 @@ export function loadConfig(root) {
 }
 
 export function saveConfig(root, cfg) {
+  // Only what the team declares is ever written back: never an error marker, never the organisation's floors.
+  if (cfg._floors) throw new Error('refusing to save a configuration that has the organisation\'s floors applied');
   const { _error, ...clean } = cfg;
   fs.writeFileSync(codaPath(root, 'config.json'), JSON.stringify(clean, null, 2) + '\n');
 }

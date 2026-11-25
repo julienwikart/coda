@@ -104,6 +104,13 @@ export function brief(root, cfg, opts = { refresh: 'never' }) {
   lines.push(`This project is run by a sandwich team${cfg.team.name ? ` — ${cfg.team.name}` : ''}: ${humans || 'humans not declared yet'}.`);
   lines.push('Humans hold the intent; cognitive agents (memory, pattern, simulation, coordination) turn it into steering; execution agents (builder, verifier) deliver. Agents propose, humans decide.');
   lines.push('', `**Autonomy level:** ${LEVEL_TEXT[cfg.autonomy.level]} Enforced by the harness, not by this text.`);
+  const f = cfg._floors;
+  if (f && !f.unreadable) {
+    if (f.capped) lines.push(`The team declares "${f.declaredLevel}", but the organisation caps every team at "${f.maxLevel}".`);
+    const parts = [f.protected.length ? `protected for every team: ${f.protected.join(', ')}` : '', f.denyCommands.length ? `never run: ${f.denyCommands.join(', ')}` : '', f.verify.commands.length ? `verification must include: ${f.verify.commands.map((c) => `\`${c}\``).join(', ')}` : '', f.verify.requireReview ? 'an independent review is required' : ''].filter(Boolean);
+    if (parts.length) lines.push(`**Floors set by the organisation** (a team may be stricter, never laxer) — ${parts.join('; ')}.`);
+    if (f.stale) lines.push('_The organisation cannot be read right now: these are its floors as last read on this machine._');
+  }
   if (cfg._error) lines.push(`**Config problem:** ${cfg._error} — falling back to "observed". Tell the human.`);
 
   lines.push(...orgSection(root, cfg, opts));
@@ -150,7 +157,8 @@ export function status(root, cfg) {
   try { const o = resolveOrg(root, cfg, { refresh: 'never' }); if (o && !o.error) sharedGuardians = orgGuardians(o.org).map((h) => h.name).filter((n) => !humans.some((h) => h.name === n && !h.external)); } catch { /* no organisation to ask */ }
   return {
     team: cfg.team,
-    autonomy: { level: cfg.autonomy.level, levels: LEVELS, since: cfg.autonomy.since || lastLevel?.ts || null, perimeter: cfg.autonomy.perimeter },
+    floors: cfg._floors || null,
+    autonomy: { level: cfg.autonomy.level, declaredLevel: cfg._floors?.declaredLevel ?? cfg.autonomy.level, levels: LEVELS, since: cfg.autonomy.since || lastLevel?.ts || null, perimeter: cfg.autonomy.perimeter },
     intent: Boolean(intentSummary(root)?.purpose),
     decisions: { total: listRecords(root, 'decisions').length, inForce: activeDecisions(root).length },
     patterns: { total: listRecords(root, 'patterns').length, open: openPatterns(root).length },

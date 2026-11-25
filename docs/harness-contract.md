@@ -27,9 +27,11 @@ A decision taken for several teams (`.coda-org/decisions/X-0001-….md`) reaches
 | Edit anything under `.coda-org/` | ask | ask | ask |
 | Edit the organisation's journal, or the local copy of a remote organisation | deny | deny | deny |
 
+An organisation may set floors (`floors` in `.coda-org/org.json`): paths protected for every team, commands never run, commands that always ask, verification commands that always run, a required review, a cap on the autonomy level. What the guard and the gates enforce is the team's configuration tightened by them: lists are unions and the level is the lower of the two, so a team can be stricter and nothing in a team's own configuration makes it laxer.
+
 Each team declares what it carries (`scope` in `.coda/config.json`: domains, components, paths), and the organisation's map is the sum of these declarations. Before an agent acts, its brief has told it who carries what and which overlaps are open (G1); in a repository several teams share, the guard refuses a write in another team's directory whatever the autonomy level.
 
-At every level, cognitive agents cannot write outside `.coda/` or run commands that act on the project. An unreadable or invalid configuration falls back to `observed`: a broken config never widens permissions.
+At every level, cognitive agents cannot write outside `.coda/` or run commands that act on the project. An unreadable or invalid configuration falls back to `observed`: a broken config never widens permissions. The same holds one level up: when a team has an organisation whose floors cannot be read, the floors last read on that machine keep applying, and with none the team falls back to `observed`.
 *Adapter:* a pre-tool-use hook on file-writing tools and the shell returns allow, ask or deny.
 
 **G3 — Verification loops.** An agent's turn cannot be accepted while the deliverable state of the working tree has changed and the team's verification commands have not passed on that exact state. When review is required, the same holds until an independent verifier, with no write access, has passed that exact state. The result is recorded by the harness; the model cannot record it.
@@ -50,6 +52,8 @@ Stated plainly, so nobody delegates on a false assumption:
 - **A session started at the root of a shared repository belongs to no team.** Each file it changes is judged by the rules of the team that carries it and counts towards that team's verification gate; a file no team carries, and any command that acts, asks a human. There is no autonomy level of its own at the root.
 - **Across teams, memory is read from records, through their entities.** A decision reaches another team's brief only if it names the entity that links them; a record without entities is invisible next door. A contradiction between two teams is reported when a record declares it (`contradicts: [team/D-0001]`); nothing computes that two decisions conflict. Finding a relevant decision by searching is the memory agent's work, so guidance.
 - **Other teams are as fresh as what they committed and what was last fetched.** In one repository, your checkout; across repositories, the default branch of each team as of the last fetch.
+- **Floors are as fresh as the organisation's last read.** In one repository, the checkout. Across repositories, the copy fetched at session start: a team that stays offline keeps the floors it last fetched, old or new. Nothing here can push a floor to a machine.
+- **Floors hold for a team that has an organisation.** A team whose link to its organisation is removed has none; in a shared repository that means deleting `.coda-org/`, which asks a human and shows in the diff. Review is what protects the link.
 - **A decision of the organisation binds through the brief, not through the guard.** Every agent of a team it names is told; nothing mechanically stops a change that goes against it. The check that its maker is the named arbiter is made when it is recorded: a record added to `.coda-org/decisions/` by pull request without `coda org record` still reaches the briefs, and `coda org pending` reports it as taken by the wrong person.
 - **A shared guardian sees audits and records, not journals.** What a team's agents did is audited inside that team; the view across teams is built from each team's audit reports and decision records.
 - **Overlaps are detected between declarations, not between realities.** Two teams declaring the same domain or component is reported at once. Two teams working on the same thing under different names is not.
@@ -78,7 +82,7 @@ One JSON object per line, in `.coda/journal/<YYYY-MM>/<session>.jsonl`:
 | `verify` | `passed`, `failed`, `unresolved` | harness |
 | `review` | `passed`, `failed` | harness |
 | `autonomy` | `changed` | harness, on a human's decision |
-| `org` | `initialized`, `team-added`, `joined`, `rule-set`, `decision-recorded` | harness, on a human's decision |
+| `org` | `initialized`, `team-added`, `joined`, `rule-set`, `floors-set`, `decision-recorded` | harness, on a human's decision |
 | `scope` | `declared` | harness, on a human's decision |
 | `decision`, `intent`, `pattern`, `memory`, `audit`, `delivery` | `recorded`, `updated`, `sync`, `reviewed`, `recall`, `completed` | skills, via `coda journal add` |
 

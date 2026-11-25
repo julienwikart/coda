@@ -26,6 +26,8 @@ Run `coda status` and read the journal for the period since the current level wa
 
 Then your recommendation, with what you would want to see first if it is "not yet". Recommend lowering the level just as readily: unresolved verifications, a guard denial that repeats, or an incident are reasons to step down while the cause is fixed.
 
+If the brief shows floors set by the organisation, they bound what the team can decide here: the level cannot be raised above the organisation's cap, and its protected paths, forbidden commands and verification apply whatever the team's own configuration says. Raising a cap or lifting a floor is the organisation's decision (`/coda:org`), not something to work around in the team's configuration.
+
 ## Change it, if the human decides to
 
 The level: `coda level <level> --by "<name>" --reason "<the evidence, in a sentence>"`. The harness asks the human to approve this command; that approval is the decision. The perimeter (`autonomy.perimeter` in `.coda/config.json`: `write`, `protected`, `askCommands`, `denyCommands`) is edited directly, also under human approval — widen it path by path on evidence, rather than opening everything at once.

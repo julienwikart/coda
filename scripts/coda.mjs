@@ -9,7 +9,7 @@ import {
   DEFAULT_CONFIG, LEVELS, ROLES, CODA_DIR, git, cliSession,
 } from './lib.mjs';
 import { brief, status } from './brief.mjs';
-import { resolveOrg, orgFacts, findOrgRoot, loadOrgFile, orgPath, parseHuman, orgAt, teamsOf, overlaps, scopeProblems, arbitration, orgGuardians, orgDecisions, arbitrationProblems, ORG_DIR } from './org.mjs';
+import { resolveOrg, orgFacts, findOrgRoot, loadOrgFile, orgPath, parseHuman, orgAt, teamsOf, overlaps, scopeProblems, arbitration, orgGuardians, orgDecisions, arbitrationProblems, withFloors, normaliseFloors, ORG_DIR } from './org.mjs';
 import { buildGraph, buildOrgGraph, bearingOn, neighbourhood, toMermaid, toMarkdown, parseEntity, ENTITY_TYPES, LINK_TYPES } from './graph.mjs';
 
 // Events only the harness may write: a model must not be able to claim that
@@ -38,6 +38,9 @@ const USAGE = `coda — cognitive orchestration for delivery agents
                                      who settles what two teams cannot settle between them
   coda org next-id [title] | record <X-id> --by <human>
                                      a decision taken for several teams, kept with the organisation
+  coda org floors [set --by <human> [--protect <glob>]... [--deny-command <c>]... [--ask-command <c>]...
+                  [--verify "<cmd>"]... [--require-review] [--max-level <level>]]
+                                     what every team's harness must at least enforce
   coda org pending | audit           what waits between teams; evidence for a shared guardian
   coda org map | check               who carries what; overlaps and gaps (check exits 1 on an overlap)
   coda scope                         what this team declares it carries
@@ -234,6 +237,20 @@ function org(pos, opt) {
     appendEvent(dir, { type: 'org.rule-set', actor: `human:${by}`, session: cliSession(dir), base: orgPath(dir), data: next });
     const a = arbitration(o.org);
     console.log(`Between teams, ${a.arbiter || 'nobody yet'} arbitrates${a.rule ? `: ${a.rule}` : ''}.`);
+  } else if (sub === 'floors') {
+    // What every team's harness must at least enforce. A team may be stricter, never laxer.
+    const { o } = orgContext();
+    if (pos[1] !== 'set') { console.log(JSON.stringify(normaliseFloors(o.org.floors), null, 2)); return; }
+    const dir = writableOrg(o);
+    const by = who(opt);
+    if (opt['max-level'] && opt['max-level'] !== true && !LEVELS.includes(opt['max-level'])) fail(`unknown level "${opt['max-level']}". Use one of: ${LEVELS.join(', ')}.`);
+    // The whole set is stated each time, so that what is in force can be read in one place.
+    const next = normaliseFloors({ protected: list(opt.protect), denyCommands: list(opt['deny-command']), askCommands: list(opt['ask-command']), verify: { commands: list(opt.verify), requireReview: opt['require-review'] === true }, maxLevel: opt['max-level'] });
+    const before = normaliseFloors(o.org.floors);
+    o.org.floors = next;
+    fs.writeFileSync(orgPath(dir, 'org.json'), JSON.stringify(o.org, null, 2) + '\n');
+    appendEvent(dir, { type: 'org.floors-set', actor: `human:${by}`, session: cliSession(dir), base: orgPath(dir), data: { before, after: next } });
+    console.log(`Floors of ${o.name} set by ${by}. They apply to every team from its next tool call${o.source === 'local' ? '' : ' after a refresh'}.`);
   } else if (sub === 'next-id') {
     const { o } = orgContext();
     const id = nextId(null, 'decisions', 'X-', orgPath(o.dir));
@@ -276,7 +293,7 @@ function org(pos, opt) {
       };
     });
     console.log(JSON.stringify({ organisation: o.name, guardians: orgGuardians(o.org).map((h) => h.name), arbitration: arbitration(o.org), teams: perTeam, betweenTeams: { contradictions: g.betweenTeams, overlaps: overlaps(teams) }, organisationDecisions: { total: decided.length, problems: arbitrationProblems(o, decided) } }, null, 2));
-  } else fail('org: use init, add-team, join, status, sync, map, check, decisions, rule, next-id, record, pending or audit.');
+  } else fail('org: use init, add-team, join, status, sync, map, check, decisions, rule, floors, next-id, record, pending or audit.');
 }
 
 /** The organisation's directory when it can be written from here: never through a read-only copy. */
@@ -348,7 +365,7 @@ function journal(root, pos, opt) {
 }
 
 function verify(root, opt) {
-  const cfg = loadConfig(root);
+  const cfg = withFloors(root, loadConfig(root));
   if (!cfg.verify.commands.length) fail('no verification commands configured (.coda/config.json → verify.commands).');
   const fp = fingerprint(root);
   if (!opt.force && fp && loadVerified(root).fp === fp) {
@@ -372,7 +389,9 @@ function level(root, pos, opt) {
   if (!opt.reason || opt.reason === true) fail('--reason is required.');
   const from = cfg.autonomy.level;
   if (from === to) { console.log(`Already at "${to}".`); return; }
-  if (to === 'bounded' && !cfg.verify.commands.length) fail('bounded autonomy needs verification commands first (verify.commands): autonomy without a verification loop is not delegation.');
+  const floors = withFloors(root, cfg)._floors;
+  if (floors?.maxLevel && LEVELS.indexOf(to) > LEVELS.indexOf(floors.maxLevel)) fail(`the organisation caps every team at "${floors.maxLevel}". Raising the cap is the organisation's decision (\`coda org floors\`), not a team's.`);
+  if (to === 'bounded' && !withFloors(root, cfg).verify.commands.length) fail('bounded autonomy needs verification commands first (verify.commands): autonomy without a verification loop is not delegation.');
   cfg.autonomy.level = to;
   cfg.autonomy.since = new Date().toISOString();
   saveConfig(root, cfg);
@@ -381,7 +400,7 @@ function level(root, pos, opt) {
 }
 
 function doctor(root) {
-  const cfg = loadConfig(root);
+  const cfg = withFloors(root, loadConfig(root));
   const checks = [];
   const add = (ok, label, fix) => checks.push({ ok, label, fix });
   add(!cfg._error, 'config.json is valid', cfg._error);
@@ -414,10 +433,10 @@ const cmd = pos.shift();
 if (opt.help) { process.stdout.write(USAGE); process.exit(0); }
 switch (cmd) {
   case 'init': init(opt); break;
-  case 'brief': { const root = needRoot(); console.log(brief(root, loadConfig(root))); break; }
+  case 'brief': { const root = needRoot(); console.log(brief(root, withFloors(root, loadConfig(root)))); break; }
   case 'org': org(pos, opt); break;
   case 'scope': scope(needRoot(), pos, opt); break;
-  case 'status': { const root = needRoot(); console.log(JSON.stringify(status(root, loadConfig(root)), null, 2)); break; }
+  case 'status': { const root = needRoot(); console.log(JSON.stringify(status(root, withFloors(root, loadConfig(root))), null, 2)); break; }
   case 'next-id': {
     const root = needRoot();
     const kind = pos[0];
