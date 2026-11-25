@@ -36,6 +36,7 @@ CODA goes where the work already is. The coding agent a team uses every day is t
 - Execution agents as a floor of their own, steered by the cognitive floor.
 - The harness contract: five guarantees, enforced rather than recommended.
 - Autonomy levels applied as permissions.
+- The organisation: what several sandwich teams share — one intent, a map of who carries what, a memory that crosses teams, arbitration, a shared guardian, floors for every harness — read from what each team declares and decides.
 
 ## What was dropped
 
@@ -44,8 +45,8 @@ CODA goes where the work already is. The coding agent a team uses every day is t
 - The 5-to-50-people target.
 - Numeric scores computed by a model (alignment score, health score). CODA reports counts from the journal and leaves judgement to humans.
 - Semantic similarity by embeddings. Nothing computes that two decisions are close in meaning; the memory agent judges it when asked, and the human confirms the `related` link.
-- Multi-tenant hosting. A shared cognition service across teams may return for the company level; it is not part of 0.1.
+- Multi-tenant hosting. Several teams share an organisation through files in git, not through a service.
 
 ## Moving existing data
 
-There is no automatic migration in 0.1. Decisions and intents exported from a SYNAPSE instance map directly onto the record formats described in `/coda:decide` and `/coda:intent`; write them into `.coda/decisions/` and `.coda/intent.md` and commit.
+There is no automatic migration. Decisions and intents exported from a SYNAPSE instance map directly onto the record formats described in `/coda:decide` and `/coda:intent`; write them into `.coda/decisions/` and `.coda/intent.md` and commit.

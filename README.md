@@ -61,14 +61,31 @@ Where spec-driven development lets the spec drive, here cognition drives: what t
 | `/coda:decide <question>` | A choice that is costly to reverse: memory, simulation, a human decides, it is recorded. |
 | `/coda:recall <question>` | "What did we decide about…?" |
 | `/coda:graph <thing>` | What touches a component, a constraint, a risk; how decisions depend on or contradict each other. |
-| `/coda:patterns` | What keeps recurring; ignore, correct or experiment. Replaces the retrospective. |
-| `/coda:sync` | Are we still serving the intent? Replaces the status meeting. |
+| `/coda:patterns` | What keeps recurring, read from what actually happened; ignore, correct or experiment. |
+| `/coda:sync` | Are we still serving the intent? Read from the memory and the journal. |
 | `/coda:audit` | Evidence for the ethical guardian: how decisions were made, whether agents stayed in bounds. |
 | `/coda:autonomy` | Raise or lower what agents may do, on the journal's evidence. |
 | `/coda:status` | Where the team stands, and whether the harness is really in place. |
-| `/coda:org` | Several teams: the organisation's intent and constraints, declared once and delivered to every team. |
+| `/coda:org` | Several teams: the organisation's intent, the map of who carries what, floors for every harness. |
+| `/coda:arbitrate` | Settle what two teams cannot settle between them; a named human decides. |
+| `/coda:overview` | The organisation at a glance: scopes carried, what is open between teams. |
+| `/coda:split` | Turn one team into several sandwich teams, each with what it inherits. |
 
 You do not have to use the commands for the harness to work. Once `.coda/` exists, any session in the project gets the brief, the guardrails, the journal and the verification gate.
+
+## Several teams
+
+Teams of two means more teams, and what links them matters more than what happens inside each. An organisation is a `.coda-org/` directory the teams share — in the same repository, or in one of its own that each team reads from a local copy. `/coda:org` sets it up. Once it exists:
+
+- **One intent above the teams.** The organisation's constraints reach every session of every team; nobody copies them.
+- **A map of who carries what.** Each team declares its domains and components. Two teams claiming the same thing is reported at once, and in a shared repository no team's agents can write in another team's directory.
+- **A memory that crosses teams.** `/coda:recall` searches every team's decisions; each team is told which decisions taken elsewhere bear on it; a contradiction between two teams shows up for both. Journals stay with each team.
+- **Arbitration.** What two teams cannot settle is decided once by a named human (`/coda:arbitrate`) and binds the teams concerned.
+- **Floors.** The organisation states what no team's harness may go below; each team sets its own level above that.
+- **The whole at a glance.** `/coda:overview` shows the scopes carried, what is open between teams, and which teams say they are too small. It ranks nobody and counts no heads.
+- **Splitting.** `/coda:split` turns one team into several, each with its scope and the decisions that concern it.
+
+A team with no organisation works exactly as before.
 
 ## Autonomy levels
 
@@ -95,11 +112,22 @@ A team earns the next level with evidence from its own journal, and a named huma
 
 Plain files in git: the memory is shared by pull request, readable without CODA, and survives any tool.
 
+An organisation adds one directory, shared by its teams:
+
+```
+.coda-org/
+├── org.json         name, humans, teams, rule of arbitration, floors
+├── intent.md        the organisation's purpose and non-negotiable constraints
+├── decisions/       X-0001-….md — decisions taken for several teams
+├── audits/          the shared guardian's reports
+└── journal/         append-only events of the organisation
+```
+
 ## The framework
 
 The plugin is the reference implementation of a framework. Read it before reorganising a team around it:
 
-- [The framework](docs/framework.md) — the sandwich team, the three floors, the four roles, entry conditions, the path from a team of eight to teams of two, and what holds at company scale.
+- [The framework](docs/framework.md) — the sandwich team, the three floors, the four roles, entry conditions, the path from a team of eight to teams of two, and what several teams share.
 - [The harness contract](docs/harness-contract.md) — what any harness must guarantee, and how to adapt one that is not Claude Code.
 - [Coming from SYNAPSE](docs/from-synapse.md) — what carried over and what was dropped.
 
@@ -107,7 +135,7 @@ One position is not negotiable: at equal headcount, more teams and more scope. P
 
 ## Status
 
-Version 0.1. The harness adapter is tested (`npm test`) and has been exercised end to end in Claude Code. The framework's thresholds — how long bounded autonomy must hold before a split, which roles may be cumulated — are proposals awaiting field evidence; see the open questions in [the framework](docs/framework.md).
+Version 0.2. The harness adapter is tested (`npm test`) and has been exercised end to end in Claude Code, for one team and for an organisation of three teams, in one repository and across several. Across repositories, what teams know of each other is as fresh as the last fetch, and the wall between teams exists only inside one repository; [the harness contract](docs/harness-contract.md) says exactly what is enforced. No organisation has run on it yet. The framework's thresholds — how long bounded autonomy must hold before a split, which roles may be cumulated — are proposals awaiting field evidence; see the open questions in [the framework](docs/framework.md).
 
 ## License
 

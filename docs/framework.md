@@ -77,23 +77,45 @@ The weak point, faced head-on: at two, each person is a single point of failure.
 A team of eight does not lose six people. It splits into four sandwich teams once the agents' autonomy is proven.
 
 1. **Equip.** The team keeps its size and installs the harness and the execution layer. *Move on when* agents hold supervised execution.
-2. **Connect cognition.** Memory, patterns and coordination take over from synchronisation meetings. *Move on when* decisions are found in the memory without being asked for again.
+2. **Connect cognition.** Decisions, patterns and coordination live in the memory and the agents. *Move on when* decisions are found in the memory without being asked for again.
 3. **Widen autonomy.** The execution layer moves to bounded autonomy. *Move on when* all entry conditions hold.
-4. **Split.** The team becomes four sandwich teams, each with its scope and its intent. *Move on when* each new team ships alone.
+4. **Split.** The team becomes four sandwich teams, each with its scope and its intent. Each inherits the decisions in force that concern it, and the split is traced in every journal involved. *Move on when* each new team ships alone.
 5. **Stabilise.** Human measures — cognitive load, perceived autonomy, trust in the system — decide whether the format holds. *Go back when* the regrowth signal fixed in advance fires.
 
-## At company scale
+## The organisation
 
-Smaller teams means more teams, so the transformation is decided by what links them. Four things are shared between sandwich teams:
+Take twenty people. As two teams of ten, they have ninety links inside the teams and one between them. As ten teams of two, they have ten links inside and forty-five between. Coordination does not disappear when teams get smaller: it leaves the team. What links the teams is therefore where the framework has to do its work, and it does so without asking anyone to maintain a shared document: everything below is read from what each team already declares and decides.
 
-- **Intent.** An organisation intent declines into team intents.
-- **Cognition.** Memory and pattern detection are common, which replaces coordination by meetings.
-- **Harness.** It becomes a platform maintained once, under the system orchestrator.
-- **Ethics.** The ethical guardian is shared across teams.
+Six things are shared between sandwich teams.
+
+- **Intent.** The organisation writes one intent. Its non-negotiable constraints and what it puts out of scope reach every session of every team, read from the organisation itself; a team adds its own intent and may be stricter.
+- **The map.** Each team declares what it carries — domains and components. Together the declarations say who answers for what, every team's agents receive them, and two teams declaring the same thing is reported the moment it is declared. The cut follows the architecture: a scope is a part of the system that can ship alone.
+- **Cognition.** Every team's decisions are readable by the others. A team's agents are told which decisions taken elsewhere bear on what it carries, a contradiction between two teams' decisions is shown to both, and a constraint met three times across teams is a pattern of the organisation. Journals stay with each team: teams see what the others decided, never what they did day to day.
+- **Arbitration.** What two teams cannot settle between them is decided once, by a named human — the organisation's intent architect, unless its rule names someone else — on a criterion written in advance. That decision is kept with the organisation and binds the teams it names. Agents lay out both sides; a human decides.
+- **The guardian.** The ethical guardian is declared once and is every team's guardian, which is what puts them outside each team. Their view across teams is built from each team's audits and records. Audits are of the system, never of a person, and never rank teams.
+- **The harness.** It is a platform with floors. The organisation states what no team's harness may go below — protected paths, forbidden commands, a minimum verification, a cap on autonomy. Each team sets its own level and perimeter above that, and can be stricter.
+
+Two levels are enough to start: teams, and the organisation above them.
+
+The organisation's humans see the whole without anyone reporting to them: which scopes are carried, what is open between teams, what waits for the arbiter, which teams have said they are too small. That view shows what teams declare. It holds no measure of activity and no headcount, and it puts teams in no order.
 
 This is where the gain is expected: coding alone may improve by 30 to 40%, but the team often gains under 10% if planning, testing and release stay manual ([Forrester, June 2026](https://forrester.com/blogs/agentic-software-development-takes-the-lead-from-code-assistants-to-orchestrated-sdlc-agents)).
 
-What the plugin implements of this today: the organisation's intent, declared once in `.coda-org/` and delivered into the brief of every team's sessions, whether the teams share a repository or each have their own. Each team also declares what it carries; the declarations form a map that every team's agents receive, overlaps between two teams are reported the moment they are declared, and in a repository several teams share no team's agents can write in another team's directory. Memory is shared as a by-product of deciding: every team's decisions are readable by the others, a team's agents are told which decisions taken elsewhere bear on it, contradictions between teams are surfaced to both, and a constraint met three times across teams is reported as a pattern of the organisation. Journals stay with each team. What two teams cannot settle between them is decided once, by the human the organisation's rule names — its intent architect unless it says otherwise — and that decision binds the teams concerned through their briefs. The ethical guardian is declared once and is every team's guardian. The harness is a platform with floors: the organisation states what no team's harness may go below — protected paths, forbidden commands, a minimum verification, a cap on autonomy — and each team sets its own level and perimeter above that. A team can be split into several, each inheriting its scope and the decisions that concern it, and a view of the organisation shows the scopes carried, what is open between teams and which teams say they are too small.
+All of this is implemented by the plugin, for teams that share a repository and for teams that each have their own. What is enforced and what is guidance is stated in [the harness contract](harness-contract.md); the short version is that the constraints, the map, the floors and the wall between teams' directories are enforced, while noticing that a request reaches into another team's domain, and not deciding against a decision of the organisation, rest on what agents are told.
+
+## What becomes of those who led several teams
+
+*A proposal, to be validated.*
+
+Someone who followed two teams of eight would have to follow eight teams of two. Following does not scale, and it is no longer needed: memory carries what teams used to be told, the map says who answers for what, and the view shows the whole.
+
+What remains is what no agent holds and no team can hold alone, and it is three things:
+
+- **Holding the organisation's intent**: what the teams are for together, and what none of them may trade away.
+- **Arbitrating**: deciding what two teams cannot settle between them, on a criterion stated in advance.
+- **Keeping the cut right**: seeing that each scope can ship alone, that no two teams answer for the same thing, and that a team which says it is too small gets an answer.
+
+These are existing roles held at the level of the organisation — intent architect and system orchestrator — not a new one. Someone who holds them does not relay information between teams, check progress, or assign work; if they do, they have become the bottleneck the format was meant to remove. How many teams one person can hold this for is not known yet.
 
 ## Position on people
 
@@ -112,5 +134,7 @@ The agents carry the same position: patterns and audits are about the system, ne
 - Does the sovereign maker remain a human role when agents execute?
 - The list of execution agents beyond development and testing.
 - How long bounded autonomy must hold before a split.
-- What becomes of middle management.
-- The signal that makes a team grow again.
+- The signal that makes a team grow again: each team names its own; whether some signals should be common to an organisation is open.
+- How many teams one ethical guardian can follow. Nothing limits it; a reference figure will come from the field.
+- How many teams one person can hold the organisation's intent and arbitration for, and what the proposal above becomes in practice.
+- Whether a level between the team and the organisation is ever needed. Two are assumed until an organisation shows otherwise.

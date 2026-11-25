@@ -1,6 +1,6 @@
 # The harness contract
 
-CODA does not provide a harness. It states what a harness must guarantee before a team of two can delegate to agents, and ships one adapter — for Claude Code — that makes those guarantees real. Any other harness that meets the contract can run a CODA team: the state is plain files, and the logic is a dependency-free Node CLI.
+CODA does not provide a harness. It states what a harness must guarantee before a team of two can delegate to agents, and before several such teams can work side by side, and ships one adapter — for Claude Code — that makes those guarantees real. Any other harness that meets the contract can run a CODA team: the state is plain files, and the logic is a dependency-free Node CLI.
 
 "Guarantee" has a precise meaning here: the property holds even if the model ignores, forgets or is talked out of its instructions. A rule that lives only in a prompt is guidance, not a guarantee.
 
@@ -44,6 +44,24 @@ At every level, cognitive agents cannot write outside `.coda/` or run commands t
 
 **G5 — Observability.** Every session, agent run, write, acting command, guard decision and verification result is appended to `.coda/journal/`. Events are never edited. Each stream is hash-chained, so an edit or deletion is detectable (`coda journal verify`). Events of the families `session`, `run`, `tool`, `guard`, `verify`, `review` and `autonomy` can only be written by the harness. Journals never cross teams: the copy one team keeps of another holds its declarations and its records, not its journal and not its code, so nothing a team's agents can read lets them compare another team's activity. `decision.recorded` and `pattern.reviewed` are refused unless the record they name exists.
 *Adapter:* post-tool-use, subagent and session hooks; the guard denies any other write to the journal.
+
+## Across teams: what is enforced and what is guidance
+
+When several teams share an organisation, the five guarantees extend as follows. "Enforced" holds even if the model ignores its instructions; "guidance" rests on what agents are told.
+
+| Between teams | Nature |
+|---|---|
+| The organisation's constraints, the map of who carries what, open overlaps, the decisions of other teams that bear on this one, and the organisation's decisions that bind it, are in every session's brief | Enforced (G1), as fresh as the last read of the organisation |
+| No write in another team's directory, in a shared repository | Enforced for file-editing tools (G2) |
+| A team's configuration cannot go below the organisation's floors | Enforced (G2, G3) |
+| Unreadable floors mean the last ones read, or `observed` | Enforced — the one place the organisation fails closed |
+| Nothing under `.coda-org/` changes without a human; organisation, scope, split and regrowth events are written only on a named human's decision | Enforced (G2, G5) |
+| A decision between teams is recorded only if it names the arbiter the organisation's rule designates | Enforced when recorded |
+| Another team's journal and code are never copied | Enforced (G5) |
+| Stopping when a request reaches into another team's domain or component | Guidance, and the only protection across repositories |
+| Not deciding or delivering against a decision of the organisation | Guidance |
+| Finding the relevant decision of another team by searching | Guidance |
+| Checking the entry conditions before a split | Guidance |
 
 ## What the adapter does not guarantee
 
@@ -103,4 +121,4 @@ The skills are standard `SKILL.md` files and the agents are Markdown prompts; mo
 | G4 | restrict tools per agent and tell the hook which agent is acting | `agent_type` in the event |
 | G5 | call out after tool calls and agent runs | `hook.mjs` with `PostToolUse`, `SubagentStart`, `SubagentStop`, `SessionStart`, `SessionEnd` |
 
-A harness that cannot intercept tool calls cannot meet G2, and a team on it should stay at `supervised` using the tool's own approval prompts. Adapters for other harnesses are welcome as contributions; none ships in 0.1.
+A harness that cannot intercept tool calls cannot meet G2, and a team on it should stay at `supervised` using the tool's own approval prompts. Adapters for other harnesses are welcome as contributions; none ships yet.

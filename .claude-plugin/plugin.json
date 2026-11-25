@@ -1,7 +1,7 @@
 {
   "name": "coda",
   "displayName": "CODA",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Run a product with two humans: a shared intent, cognitive agents that steer, execution agents that deliver — with guardrails, verification and an append-only journal enforced by the harness.",
   "author": { "name": "Julien Wikart" },
   "homepage": "https://github.com/julienwikart/coda",
