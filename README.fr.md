@@ -1,8 +1,8 @@
 # CODA
 
-**Trois humains, une intention, des agents qui livrent.**
+**Deux humains, une intention, des agents qui livrent.**
 
-CODA (Cognitive Orchestration for Delivery Agents) est un cadre pour porter un produit avec une *sandwich team* : deux ou trois humains qui le portent de bout en bout, avec des agents pour tout le reste. Il s'installe comme un plugin dans votre agent de code. Pas de serveur, pas de base de données, pas de clé d'API : votre agent est le runtime, votre dépôt est la mémoire.
+CODA (Cognitive Orchestration for Delivery Agents) est un cadre pour porter un produit avec une *sandwich team* : deux humains qui le portent de bout en bout, avec des agents pour tout le reste. Il s'installe comme un plugin dans votre agent de code. Pas de serveur, pas de base de données, pas de clé d'API : votre agent est le runtime, votre dépôt est la mémoire.
 
 [English](README.md)
 
@@ -66,7 +66,7 @@ Une équipe gagne le niveau suivant avec les preuves de son propre journal, et u
 
 ## Le cadre
 
-Le plugin est l'implémentation de référence d'un cadre, décrit dans [docs/framework.md](docs/framework.md) (en anglais) : la sandwich team, les trois étages, les quatre rôles, les conditions d'entrée, la trajectoire de huit à trois, le niveau entreprise. Voir aussi [le contrat de harness](docs/harness-contract.md) et [ce qui vient de SYNAPSE](docs/from-synapse.md).
+Le plugin est l'implémentation de référence d'un cadre, décrit dans [docs/framework.md](docs/framework.md) (en anglais) : la sandwich team, les trois étages, les quatre rôles, les conditions d'entrée, la trajectoire de huit à deux, le niveau entreprise. Voir aussi [le contrat de harness](docs/harness-contract.md) et [ce qui vient de SYNAPSE](docs/from-synapse.md).
 
 Une position n'est pas négociable : à effectif égal, plus d'équipes et plus de périmètre. Les personnes libérées par une scission forment de nouvelles sandwich teams. La réduction d'effectifs n'est jamais un objectif du cadre.
 

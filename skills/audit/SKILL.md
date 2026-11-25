@@ -20,7 +20,7 @@ Report against what the framework holds as non-negotiable:
 5. **Signs of bias in the decision process** — signals to examine, not verdicts, and only meaningful from about ten decisions:
    - one decision type dominating (for example, over 70% operational: strategic questions may be going undecided, or decided implicitly);
    - no decision ever vetoed, superseded or challenged (possible lack of challenge), or a high share cancelled (possibly an unclear intent);
-   - decisions clustering on one maker beyond what the roles explain. In a team of two or three this is often just the structure — say so rather than raising an alarm;
+   - decisions clustering on one maker beyond what the roles explain. In a team of two this is usually just the structure — say so rather than raising an alarm;
    - simulations whose recommendation is always followed, or never.
 6. **People.** Any record, pattern or journal entry that contains sensitive personal data, compares individuals, or reads as monitoring of a person. These must be removed from the memory by a human; flag them without repeating their content.
 

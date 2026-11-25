@@ -1,6 +1,6 @@
 # The harness contract
 
-CODA does not provide a harness. It states what a harness must guarantee before a team of two or three can delegate to agents, and ships one adapter — for Claude Code — that makes those guarantees real. Any other harness that meets the contract can run a CODA team: the state is plain files, and the logic is a dependency-free Node CLI.
+CODA does not provide a harness. It states what a harness must guarantee before a team of two can delegate to agents, and ships one adapter — for Claude Code — that makes those guarantees real. Any other harness that meets the contract can run a CODA team: the state is plain files, and the logic is a dependency-free Node CLI.
 
 "Guarantee" has a precise meaning here: the property holds even if the model ignores, forgets or is talked out of its instructions. A rule that lives only in a prompt is guidance, not a guarantee.
 

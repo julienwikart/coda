@@ -5,7 +5,7 @@ description: Set up CODA in a project — the team's humans and roles, the auton
 
 # Set up CODA in this project
 
-CODA lets two or three humans carry a product end to end: they hold the intent, cognitive agents turn it into steering, execution agents deliver. Setting it up means writing down four things the harness will then enforce: who the humans are, what agents may do without asking, what proves a delivery is good, and where the team's memory lives.
+CODA lets two humans carry a product end to end: they hold the intent, cognitive agents turn it into steering, execution agents deliver. Setting it up means writing down four things the harness will then enforce: who the humans are, what agents may do without asking, what proves a delivery is good, and where the team's memory lives.
 
 The CODA command line is `node "${CLAUDE_PLUGIN_ROOT}/scripts/coda.mjs"`, written `coda` below. Run it from the project root.
 
@@ -17,7 +17,7 @@ Check whether `.coda/config.json` already exists; if it does, this project is se
 
 Ask, in as few rounds as possible, proposing what you found:
 
-- **Who is on the team**, and who holds each of the four roles: *intent architect* (holds the why, can veto what contradicts it), *ethical guardian* (audits decisions and agents, can veto on ethical grounds), *system orchestrator* (owns the harness: autonomy level, perimeter, verification), *sovereign maker* (accountable for what ships; accepts or refuses on feasibility). With two or three humans, roles are cumulated — that is expected. One rule: the ethical guardian should be someone outside the team, shared with other teams, because nobody audits their own decisions. If they have nobody yet, record a team member and say plainly that this entry condition is not met.
+- **Who is on the team**, and who holds each of the four roles: *intent architect* (holds the why, can veto what contradicts it), *ethical guardian* (audits decisions and agents, can veto on ethical grounds), *system orchestrator* (owns the harness: autonomy level, perimeter, verification), *sovereign maker* (accountable for what ships; accepts or refuses on feasibility). With two humans, roles are cumulated — that is expected. One rule: the ethical guardian should be someone outside the team, shared with other teams, because nobody audits their own decisions. If they have nobody yet, record a team member and say plainly that this entry condition is not met.
 - **The verification commands** — what must pass before any delivery is accepted. Propose the ones you found. If the project has none, say that this is the first thing to build: without a verification loop, there is nothing safe to delegate.
 - **The autonomy level to start at.** `observed`: agents read and propose, humans make every change. `supervised` (the default, and the right start for most teams): agents act, a human approves each change and command. `bounded`: agents act freely inside a declared perimeter. Recommend `supervised`; a team earns `bounded` with evidence (`/coda:autonomy`).
 - **The perimeter** — which paths execution agents may write in under bounded autonomy, and which are protected at every level. Propose from what you saw.
