@@ -1,8 +1,8 @@
 # CODA
 
-**Three humans, one intent, agents that deliver.**
+**Two humans, one intent, agents that deliver.**
 
-CODA (Cognitive Orchestration for Delivery Agents) is a way to run a product with a *sandwich team*: two or three humans who carry it end to end, with agents for everything else. It installs into your coding agent as a plugin. There is no server, no database and no API key: your agent is the runtime, your repository is the memory.
+CODA (Cognitive Orchestration for Delivery Agents) is a way to run a product with a *sandwich team*: two humans who carry it end to end, with agents for everything else. It installs into your coding agent as a plugin. There is no server, no database and no API key: your agent is the runtime, your repository is the memory.
 
 [Français](README.fr.md)
 
@@ -98,7 +98,7 @@ Plain files in git: the memory is shared by pull request, readable without CODA,
 
 The plugin is the reference implementation of a framework. Read it before reorganising a team around it:
 
-- [The framework](docs/framework.md) — the sandwich team, the three floors, the four roles, entry conditions, the path from a team of eight to teams of three, and what holds at company scale.
+- [The framework](docs/framework.md) — the sandwich team, the three floors, the four roles, entry conditions, the path from a team of eight to teams of two, and what holds at company scale.
 - [The harness contract](docs/harness-contract.md) — what any harness must guarantee, and how to adapt one that is not Claude Code.
 - [Coming from SYNAPSE](docs/from-synapse.md) — what carried over and what was dropped.
 

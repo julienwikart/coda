@@ -1,10 +1,10 @@
 # The CODA framework
 
-A sandwich team is two or three humans who carry a product end to end, with agents for everything else. The framework exists to make that format possible, and then to bring a whole company to it.
+A sandwich team is two humans who carry a product end to end, with agents for everything else. The framework exists to make that format possible, and then to bring a whole company to it.
 
 | What it is | What it is not |
 |---|---|
-| Two or three humans, one shared intent | A pizza team with people removed |
+| Two humans, one shared intent | A pizza team with people removed |
 | The scope of a former team of six to nine | A headcount reduction plan |
 | Cognitive agents steering execution agents | Yesterday's team going faster with assistants |
 
@@ -14,7 +14,7 @@ Humans hold the intent. Cognitive agents turn it into steering. Execution agents
 
 Each floor talks only to its neighbour: humans do not drive execution agents directly, and execution agents report upward through the journal.
 
-**Humans — four roles.** With two or three people, roles are cumulated.
+**Humans — four roles.** With two people, roles are cumulated: each holds two, and the ethical guardian sits outside the team.
 
 | Role | Holds | Power |
 |---|---|---|
@@ -70,16 +70,16 @@ A team becomes a sandwich team when all five hold; one missing blocks the move. 
 
 `/coda:autonomy` reads conditions 3 to 5 from the project and asks the humans to assert 1 and 2.
 
-The weak point, faced head-on: at two or three, each person is a single point of failure. A synthesis on sizing teams with agents keeps four to five humans as the prudent reference and asks for at least three people able to deliver alone ([Agility at Scale](https://agility-at-scale.com/safe/ai-enabled-safe/from-two-pizza-to-two-slice-ai-team-sizing-in-safe-arts/)). What compensates in this framework is the shared memory — the decisions, the intent and the journal live in the repository, not in someone's head — and the possibility for another sandwich team to take the scope over. The same source recommends fixing in advance the signal that makes the team grow again; the intent has a section for it.
+The weak point, faced head-on: at two, each person is a single point of failure. A synthesis on sizing teams with agents keeps four to five humans as the prudent reference and asks for at least three people able to deliver alone ([Agility at Scale](https://agility-at-scale.com/safe/ai-enabled-safe/from-two-pizza-to-two-slice-ai-team-sizing-in-safe-arts/)). What compensates in this framework is the shared memory — the decisions, the intent and the journal live in the repository, not in someone's head — and the possibility for another sandwich team to take the scope over. The same source recommends fixing in advance the signal that makes the team grow again; the intent has a section for it.
 
-## From eight to three
+## From eight to two
 
-A team of eight does not lose five people. It splits into two or three sandwich teams once the agents' autonomy is proven.
+A team of eight does not lose five people. It splits into four sandwich teams once the agents' autonomy is proven.
 
 1. **Equip.** The team keeps its size and installs the harness and the execution layer. *Move on when* agents hold supervised execution.
 2. **Connect cognition.** Memory, patterns and coordination take over from synchronisation meetings. *Move on when* decisions are found in the memory without being asked for again.
 3. **Widen autonomy.** The execution layer moves to bounded autonomy. *Move on when* all entry conditions hold.
-4. **Split.** The team becomes two or three sandwich teams, each with its scope and its intent. *Move on when* each new team ships alone.
+4. **Split.** The team becomes four sandwich teams, each with its scope and its intent. *Move on when* each new team ships alone.
 5. **Stabilise.** Human measures — cognitive load, perceived autonomy, trust in the system — decide whether the format holds. *Go back when* the regrowth signal fixed in advance fires.
 
 ## At company scale
@@ -108,7 +108,7 @@ The agents carry the same position: patterns and audits are about the system, ne
 ## Open questions
 
 - Final name: CODA is a working name; availability not checked.
-- Four roles for two or three humans: which cumulations are allowed?
+- Four roles for two humans: which cumulations are allowed?
 - Does the sovereign maker remain a human role when agents execute?
 - The list of execution agents beyond development and testing.
 - How long bounded autonomy must hold before a split.

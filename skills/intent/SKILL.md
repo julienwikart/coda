@@ -16,7 +16,7 @@ The intent belongs to the intent architect. Your part is to make it sharp, not t
 - **Non-negotiable constraints** — legal, ethical, business, technical. These are quoted to agents in every brief and checked in every review, so each must be concrete enough to tell whether a given change breaks it. "Respect privacy" cannot be checked; "no personal data leaves the EU region" can.
 - **Out of scope** — what the team does not do. This is what lets an agent stop instead of drifting.
 - **Success criteria** — how they will know.
-- **Regrowth signal** — fixed in advance: the observable signal that means two or three humans are no longer enough and the team must grow. At this size each person is a single point of failure; a team that has not named its signal will notice too late.
+- **Regrowth signal** — fixed in advance: the observable signal that means two humans are no longer enough and the team must grow. At this size each person is a single point of failure; a team that has not named its signal will notice too late.
 
 Push back where it helps: an objective with no measure, a constraint nobody could verify, two objectives that pull against each other. Then let them decide.
 
