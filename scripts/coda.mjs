@@ -9,7 +9,7 @@ import {
   DEFAULT_CONFIG, LEVELS, ROLES, CODA_DIR, git, cliSession,
 } from './lib.mjs';
 import { brief, status } from './brief.mjs';
-import { resolveOrg, orgFacts, findOrgRoot, loadOrgFile, orgPath, parseHuman, orgAt, teamsOf, overlaps, scopeProblems, ORG_DIR } from './org.mjs';
+import { resolveOrg, orgFacts, findOrgRoot, loadOrgFile, orgPath, parseHuman, orgAt, teamsOf, overlaps, scopeProblems, arbitration, orgGuardians, orgDecisions, arbitrationProblems, ORG_DIR } from './org.mjs';
 import { buildGraph, buildOrgGraph, bearingOn, neighbourhood, toMermaid, toMarkdown, parseEntity, ENTITY_TYPES, LINK_TYPES } from './graph.mjs';
 
 // Events only the harness may write: a model must not be able to claim that
@@ -34,6 +34,11 @@ const USAGE = `coda — cognitive orchestration for delivery agents
                                      decisions in force in every team (--bearing: those that bear on this one)
   coda graph --org [--around <id|entity>] [--format …] [--check]
                                      the graph across teams: shared entities, contradictions, recurrences
+  coda org rule [set --by <human> --arbiter <name> --rule "<criterion>"]
+                                     who settles what two teams cannot settle between them
+  coda org next-id [title] | record <X-id> --by <human>
+                                     a decision taken for several teams, kept with the organisation
+  coda org pending | audit           what waits between teams; evidence for a shared guardian
   coda org map | check               who carries what; overlaps and gaps (check exits 1 on an overlap)
   coda scope                         what this team declares it carries
   coda scope set --by <human> [--domain <d>]... [--component <c>]... [--path <glob>]...
@@ -170,6 +175,13 @@ function org(pos, opt) {
     cfg.org = link; saveConfig(root, cfg);
     appendEvent(root, { type: 'org.joined', actor: `human:${by}`, session: cliSession(root), data: { organisation: o.name, ...link } });
     console.log(`Joined ${o.name}.${o.team ? '' : ` This team ("${cfg.team.name}") is not in its list of teams yet: someone of the organisation runs \`coda org add-team --name "${cfg.team.name}" …\` there.`}`);
+  } else if ((sub === 'status' || sub === 'sync') && !findRoot(process.cwd()) && findOrgRoot(process.cwd())) {
+    // From the organisation's own root: the same facts, seen from no team in particular.
+    const o = orgAt(findOrgRoot(process.cwd()));
+    if (o.error) fail(o.error);
+    const teams = teamsOf(o, { refresh: sub === 'sync' ? 'now' : 'never', timeoutMs: 60000 });
+    console.log(JSON.stringify({ name: o.name, source: 'local', humans: o.org.humans, arbitration: arbitration(o.org), guardians: orgGuardians(o.org).map((h) => h.name), teams: teams.map(({ name, where, readable, note, fetchedAt, scope }) => ({ name, where, readable, note, fetchedAt: fetchedAt ? new Date(fetchedAt).toISOString() : null, scope })), overlaps: overlaps(teams), problems: scopeProblems(teams) }, null, 2));
+    if (sub === 'sync' && teams.some((t) => !t.readable)) process.exit(1);
   } else if (sub === 'status' || sub === 'sync') {
     const root = needRoot();
     const facts = orgFacts(root, loadConfig(root), { refresh: sub === 'sync' ? 'now' : 'never', timeoutMs: 60000 });
@@ -192,8 +204,8 @@ function org(pos, opt) {
     console.log(`${teams.length} team(s), no overlap${problems.length ? `, ${problems.length} gap(s) above` : ''}.`);
   } else if (sub === 'decisions') {
     // What every team has decided, for the memory agent and for /coda:recall. Records only — never journals.
-    const { teams, cfg } = orgContext();
-    const g = buildOrgGraph(teams);
+    const { o, teams, cfg } = orgContext();
+    const g = buildOrgGraph(teams, orgDecisions(o));
     const me = teams.find((t) => t.isSelf);
     const wantEntity = opt.entity && opt.entity !== true ? (parseEntity(opt.entity).id || slugify(opt.entity)) : null;
     const grep = opt.grep && opt.grep !== true ? String(opt.grep).toLowerCase() : null;
@@ -207,7 +219,70 @@ function org(pos, opt) {
     });
     for (const n of rows) console.log(`${n.id}\t${n.status}\t${n.date}\t${n.title}\t${g.edges.filter((e) => e.type === 'mentions' && e.from === n.id).map((e) => e.to).join(',')}\t${n.file}`);
     if (!rows.length) console.log('No decision matches.');
-  } else fail('org: use init, add-team, join, status, sync, map, check or decisions.');
+  } else if (sub === 'rule') {
+    // Who settles what two teams cannot settle between them. Written once, for the whole organisation.
+    const { o } = orgContext();
+    if (pos[1] !== 'set') { console.log(JSON.stringify(arbitration(o.org), null, 2)); return; }
+    const dir = writableOrg(o);
+    const by = who(opt);
+    const next = { ...(o.org.arbitration || {}) };
+    if (opt.arbiter && opt.arbiter !== true) next.arbiter = String(opt.arbiter);
+    if (opt.rule && opt.rule !== true) next.rule = String(opt.rule);
+    if (!next.arbiter && !next.rule) fail('give --arbiter "<name>" and/or --rule "<the criterion>".');
+    o.org.arbitration = next;
+    fs.writeFileSync(orgPath(dir, 'org.json'), JSON.stringify(o.org, null, 2) + '\n');
+    appendEvent(dir, { type: 'org.rule-set', actor: `human:${by}`, session: cliSession(dir), base: orgPath(dir), data: next });
+    const a = arbitration(o.org);
+    console.log(`Between teams, ${a.arbiter || 'nobody yet'} arbitrates${a.rule ? `: ${a.rule}` : ''}.`);
+  } else if (sub === 'next-id') {
+    const { o } = orgContext();
+    const id = nextId(null, 'decisions', 'X-', orgPath(o.dir));
+    console.log(pos[1] ? path.join(orgPath(o.dir, 'decisions'), `${id}-${slugify(pos.slice(1).join(' '))}.md`) : id);
+  } else if (sub === 'record') {
+    // The journal says a decision between teams was taken only if its record exists and names who may take it.
+    const { o } = orgContext();
+    const dir = writableOrg(o);
+    const by = who(opt);
+    const d = orgDecisions(o).find((x) => x.id === pos[1]) || fail(`no record with id ${pos[1] || '(none given)'} in ${ORG_DIR}/decisions/ — write the record first.`);
+    const { arbiter } = arbitration(o.org);
+    if (!arbiter) fail('nobody arbitrates between teams yet: declare an intent architect for the organisation, or `coda org rule set --arbiter "<name>"`.');
+    const maker = String(d.meta.maker || '');
+    if (!maker.toLowerCase().includes(arbiter.toLowerCase())) fail(`${d.id} names "${maker || 'nobody'}" as its maker, but ${arbiter} arbitrates between teams. A decision between teams is taken by the human the organisation's rule names.`);
+    const unknown = d.teams.filter((t) => t !== 'all' && !o.org.teams.some((x) => x.name === t));
+    if (unknown.length) fail(`${d.id} names team(s) the organisation does not list: ${unknown.join(', ')}.`);
+    appendEvent(dir, { type: 'org.decision-recorded', actor: `human:${by}`, session: cliSession(dir), base: orgPath(dir), data: { id: d.id, maker, teams: d.teams, settles: d.settles } });
+    console.log(`${d.id} recorded. It binds ${d.teams.length && !d.teams.includes('all') ? d.teams.join(', ') : 'every team'} and reaches their briefs at their next session.`);
+  } else if (sub === 'pending') {
+    // What is waiting for the humans between teams. Facts, in the order the teams are listed; nothing is ranked.
+    const { o, teams } = orgContext();
+    const decided = orgDecisions(o);
+    const g = buildOrgGraph(teams, decided);
+    console.log(JSON.stringify({ arbitration: arbitration(o.org), contradictions: g.betweenTeams, overlaps: overlaps(teams), recurring: g.recurring, problems: [...arbitrationProblems(o, decided), ...scopeProblems(teams)] }, null, 2));
+  } else if (sub === 'audit') {
+    // Evidence for a guardian shared by several teams. Each team's own audit stays the source for what
+    // its agents did: this reads the audits and the records, never a team's journal.
+    const { o, teams } = orgContext();
+    const decided = orgDecisions(o);
+    const g = buildOrgGraph(teams, decided);
+    const perTeam = teams.map((t) => {
+      if (!t.dir) return { team: t.name, readable: false, note: t.note };
+      const audits = listRecords(t.dir, 'audits');
+      const last = audits[audits.length - 1];
+      const decisions = listRecords(t.dir, 'decisions');
+      return {
+        team: t.name, readable: true,
+        lastAudit: last ? { file: path.join(t.dir, last.file), date: last.meta.date || path.basename(last.file, '.md'), violations: last.meta.violations ?? null, warnings: last.meta.warnings ?? null } : null,
+        decisions: { total: decisions.length, withoutMaker: decisions.filter((d) => !d.meta.maker).map((d) => d.id), withoutEntities: decisions.filter((d) => !d.meta.entities || !String(d.meta.entities).length).map((d) => d.id), strategicNotSimulated: decisions.filter((d) => String(d.meta.type).toLowerCase() === 'strategic' && String(d.meta.simulated) !== 'true').map((d) => d.id) },
+      };
+    });
+    console.log(JSON.stringify({ organisation: o.name, guardians: orgGuardians(o.org).map((h) => h.name), arbitration: arbitration(o.org), teams: perTeam, betweenTeams: { contradictions: g.betweenTeams, overlaps: overlaps(teams) }, organisationDecisions: { total: decided.length, problems: arbitrationProblems(o, decided) } }, null, 2));
+  } else fail('org: use init, add-team, join, status, sync, map, check, decisions, rule, next-id, record, pending or audit.');
+}
+
+/** The organisation's directory when it can be written from here: never through a read-only copy. */
+function writableOrg(o) {
+  if (o.source === 'remote') fail(`this team reads the organisation from ${o.location}. Run this in the organisation's own repository; it reaches the teams at their next refresh.`);
+  return o.dir;
 }
 
 /** The organisation and its teams, from inside a team or from the organisation's own root. */
@@ -319,8 +394,8 @@ function doctor(root) {
   add(readEvents(root, { types: ['session'] }).length > 0, 'harness hooks have fired at least once', 'Only CLI events found: the plugin hooks have not run in this project yet.');
   const humans = cfg.team.humans || [];
   add(humans.length > 0, `${humans.length} human(s) declared`, 'Declare the humans and their roles in config.json (team.humans).');
-  for (const role of ROLES) add(humans.some((h) => (h.roles || []).includes(role)), `role held: ${role}`, `Nobody holds ${role}.`);
-  const o = orgFacts(root, cfg, { refresh: 'never' });
+  let o = null; try { o = orgFacts(root, cfg, { refresh: 'never' }); } catch { /* no organisation to ask */ }
+  for (const role of ROLES) add(humans.some((h) => (h.roles || []).includes(role)) || (role === 'ethical-guardian' && o?.readable && o.guardians.length > 0), `role held: ${role}${role === 'ethical-guardian' && o?.readable && o.guardians.length && !humans.some((h) => (h.roles || []).includes(role)) ? ` (${o.guardians.join(', ')}, shared by the organisation)` : ''}`, `Nobody holds ${role}.`);
   if (o) {
     add(o.readable, `organisation is readable${o.readable ? ` (${o.name})` : ''}`, o.error);
     if (o.readable) {
@@ -354,7 +429,7 @@ switch (cmd) {
   case 'graph': {
     if (opt.org) {
       const { o, teams } = orgContext();
-      let g = buildOrgGraph(teams);
+      let g = buildOrgGraph(teams, orgDecisions(o));
       if (opt.check) {
         for (const p of g.problems) console.log(p);
         for (const c of g.betweenTeams) console.log(`open contradiction between teams: ${c.between.join(' and ')} are both in force`);

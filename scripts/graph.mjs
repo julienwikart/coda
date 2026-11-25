@@ -144,7 +144,7 @@ const BINDING = ['component', 'constraint', 'risk', 'process', 'metric'];
  * the links one team's decision declares to another's. Derived on demand from
  * whatever copy of each team is readable; never stored.
  */
-export function buildOrgGraph(teams) {
+export function buildOrgGraph(teams, orgRecords = []) {
   const nodes = []; const edges = []; const problems = []; const entities = new Map();
   const q = (team, id) => `${team}/${id}`;
   const pending = [];
@@ -169,6 +169,21 @@ export function buildOrgGraph(teams) {
     for (const x of g.external) pending.push({ from: q(t.name, x.from), to: x.to, type: x.type });
     for (const p of g.problems) problems.push(`${t.name}: ${p}`);
   }
+  // Decisions taken for several teams: they bind the teams they name and may settle a contradiction between two of them.
+  const settled = [];
+  for (const r of orgRecords) {
+    const id = `org/${r.id}`;
+    nodes.push({ id, kind: 'decision', team: 'org', title: r.title.replace(new RegExp(`^${r.id}\\s+`), ''), status: r.status, date: r.meta.date || '', file: r.file, binds: r.teams });
+    for (const raw of asList(r.meta.entities)) {
+      const e = parseEntity(raw);
+      if (e.error) { problems.push(`${id}: ${e.error}`); continue; }
+      if (!entities.has(e.id)) entities.set(e.id, { id: e.id, type: e.type, name: e.name, decisions: [], patterns: [], teams: [] });
+      entities.get(e.id).decisions.push(id);
+      edges.push({ from: id, to: e.id, type: 'mentions' });
+    }
+    for (const target of r.settles) pending.push({ from: id, to: target, type: 'settles' });
+    if (r.inForce) settled.push(new Set(r.settles));
+  }
   const byId = new Map(nodes.map((n) => [n.id, n]));
   for (const x of pending) {
     if (!byId.has(x.to)) { problems.push(`${x.from}: ${x.type} names ${x.to}, which no readable team holds`); continue; }
@@ -183,7 +198,8 @@ export function buildOrgGraph(teams) {
   return {
     nodes, edges, entities: entityList, problems,
     contradictions,
-    betweenTeams: contradictions.filter((c) => c.teams[0] !== c.teams[1]),
+    // Open until the two teams' humans, or the organisation's arbiter, have settled it.
+    betweenTeams: contradictions.filter((c) => c.teams[0] !== c.teams[1] && !settled.some((s) => s.has(c.between[0]) && s.has(c.between[1]))),
     // The same constraint or risk met by decisions in force, three times or more, in more than one team.
     recurring: entityList.filter((e) => ['constraint', 'risk'].includes(e.type) && e.teams.length > 1 && e.decisions.filter(inForce).length >= 3)
       .map((e) => ({ entity: e.id, teams: e.teams, decisions: e.decisions.filter(inForce) })),
@@ -203,7 +219,7 @@ export function bearingOn(orgGraph, team, scope = { domains: [], components: [] 
   const mine = new Set(orgGraph.entities.filter((e) => BINDING.includes(e.type) && e.teams.includes(team)).map((e) => e.id));
   const out = new Map();
   for (const edge of orgGraph.edges) {
-    if (edge.type !== 'mentions' || edge.from.startsWith(`${team}/`)) continue;
+    if (edge.type !== 'mentions' || edge.from.startsWith(`${team}/`) || edge.from.startsWith('org/')) continue; // the organisation's decisions reach the brief on their own
     const n = orgGraph.nodes.find((x) => x.id === edge.from);
     if (!n || n.kind !== 'decision' || RETIRED.includes(n.status)) continue;
     const ent = orgGraph.entities.find((e) => e.id === edge.to);
