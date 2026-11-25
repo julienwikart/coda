@@ -348,19 +348,19 @@ export function parseFrontmatter(text) {
   return { meta, body: text.slice(m[0].length) };
 }
 
-export function listRecords(root, kind) {
-  const dir = codaPath(root, kind);
+export function listRecords(root, kind, base = null) {
+  const dir = base ? path.join(base, kind) : codaPath(root, kind);
   if (!fs.existsSync(dir)) return [];
   return fs.readdirSync(dir).filter((f) => f.endsWith('.md')).sort().map((f) => {
     const text = fs.readFileSync(path.join(dir, f), 'utf8');
     const { meta, body } = parseFrontmatter(text);
     const title = meta.title || (/^#\s+(.+)$/m.exec(body) || [])[1] || f;
-    return { file: `${CODA_DIR}/${kind}/${f}`, id: meta.id || f.split('-')[0], title, meta, body };
+    return { file: base ? path.join(dir, f) : `${CODA_DIR}/${kind}/${f}`, id: meta.id || f.split('-')[0], title, meta, body };
   });
 }
 
-export function nextId(root, kind, prefix) {
-  const max = listRecords(root, kind).reduce((n, r) => Math.max(n, parseInt(String(r.id).replace(/\D/g, ''), 10) || 0), 0);
+export function nextId(root, kind, prefix, base = null) {
+  const max = listRecords(root, kind, base).reduce((n, r) => Math.max(n, parseInt(String(r.id).replace(/\D/g, ''), 10) || 0), 0);
   return `${prefix}${String(max + 1).padStart(4, '0')}`;
 }
 

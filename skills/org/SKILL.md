@@ -42,6 +42,12 @@ Two things follow. A decision is visible to other teams once it is committed and
 
 Journals never cross teams. What a team did day to day stays with that team.
 
+## What is decided for several teams
+
+A decision that binds more than one team is taken once, with `/coda:arbitrate`, by the human the organisation's rule names (`coda org rule`; the organisation's intent architect unless it says otherwise), and kept in `.coda-org/decisions/`. It reaches the brief of every team it binds. `coda org pending` shows what is waiting between teams.
+
+The ethical guardian is declared once, among the organisation's humans, and is then every team's guardian — which is what puts the guardian outside each team. `coda org audit` gives that person the view across teams.
+
 ## Inspect it
 
 `coda org status` shows the organisation this team belongs to, its teams, whether this team is registered, and, for a remote organisation, when its copy was last refreshed. `coda org sync` refreshes it now. If the brief says the organisation could not be read, say so plainly: the team is then working without the organisation's constraints in front of it.

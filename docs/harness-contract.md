@@ -9,6 +9,7 @@ CODA does not provide a harness. It states what a harness must guarantee before 
 **G1 — Context and memory.** Before an agent acts in the project, it has received the team's brief: the intent's purpose, its non-negotiable constraints, what is out of scope, the decisions in force, the open patterns and the current autonomy level.
 When the team belongs to an organisation, the brief also carries the organisation's purpose, its non-negotiable constraints and what it puts out of scope, read from the organisation itself: no human copies them into each team.
 The brief then also carries the decisions in force in other teams that bear on this one — about something this team declares it carries, or about a component, constraint, risk, process or metric it has also decided on — and any contradiction declared between this team's decisions and another's.
+A decision taken for several teams (`.coda-org/decisions/X-0001-….md`) reaches the brief of every team it names, or of all teams when it names none, for as long as it is in force. It is recorded only if the record exists, names as its maker the human the organisation's rule designates, and names teams the organisation lists.
 *Adapter:* a session-start hook injects the output of `coda brief`. An organisation in the same repository is read from disk. One in a repository of its own is read from a local read-only copy that the hook refreshes at session start with a time-boxed fetch; the brief states the date of the copy, and says so when the organisation could not be read at all.
 
 **G2 — Guardrails by permission.** What an agent may write or run is decided outside the model, from `.coda/config.json`:
@@ -49,6 +50,8 @@ Stated plainly, so nobody delegates on a false assumption:
 - **A session started at the root of a shared repository belongs to no team.** Each file it changes is judged by the rules of the team that carries it and counts towards that team's verification gate; a file no team carries, and any command that acts, asks a human. There is no autonomy level of its own at the root.
 - **Across teams, memory is read from records, through their entities.** A decision reaches another team's brief only if it names the entity that links them; a record without entities is invisible next door. A contradiction between two teams is reported when a record declares it (`contradicts: [team/D-0001]`); nothing computes that two decisions conflict. Finding a relevant decision by searching is the memory agent's work, so guidance.
 - **Other teams are as fresh as what they committed and what was last fetched.** In one repository, your checkout; across repositories, the default branch of each team as of the last fetch.
+- **A decision of the organisation binds through the brief, not through the guard.** Every agent of a team it names is told; nothing mechanically stops a change that goes against it. The check that its maker is the named arbiter is made when it is recorded: a record added to `.coda-org/decisions/` by pull request without `coda org record` still reaches the briefs, and `coda org pending` reports it as taken by the wrong person.
+- **A shared guardian sees audits and records, not journals.** What a team's agents did is audited inside that team; the view across teams is built from each team's audit reports and decision records.
 - **Overlaps are detected between declarations, not between realities.** Two teams declaring the same domain or component is reported at once. Two teams working on the same thing under different names is not.
 - **Shell commands are not sandboxed.** The guard reads the command text. At `bounded`, a command that is not in `askCommands` or `denyCommands` follows your harness's own permission rules, and a shell command can write anywhere the process can. The perimeter is exact for file-editing tools and best-effort for the shell. Use your harness's sandbox for a hard boundary.
 - **The journal is tamper-evident, not tamper-proof.** Someone with write access to the repository can rewrite a whole stream. Protect it the way you protect history: review, branch protection.
@@ -75,7 +78,7 @@ One JSON object per line, in `.coda/journal/<YYYY-MM>/<session>.jsonl`:
 | `verify` | `passed`, `failed`, `unresolved` | harness |
 | `review` | `passed`, `failed` | harness |
 | `autonomy` | `changed` | harness, on a human's decision |
-| `org` | `initialized`, `team-added`, `joined` | harness, on a human's decision |
+| `org` | `initialized`, `team-added`, `joined`, `rule-set`, `decision-recorded` | harness, on a human's decision |
 | `scope` | `declared` | harness, on a human's decision |
 | `decision`, `intent`, `pattern`, `memory`, `audit`, `delivery` | `recorded`, `updated`, `sync`, `reviewed`, `recall`, `completed` | skills, via `coda journal add` |
 

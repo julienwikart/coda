@@ -1,6 +1,6 @@
 // The cognitive brief: what every session and every execution agent starts from.
 import { buildGraph, buildOrgGraph, bearingOn } from './graph.mjs';
-import { resolveOrg, orgFacts, teamsOf, overlaps, scopeProblems, ORG_DIR } from './org.mjs';
+import { resolveOrg, orgFacts, teamsOf, overlaps, scopeProblems, orgDecisions, bindingOn, arbitration, orgGuardians, ORG_DIR } from './org.mjs';
 import { intentSummary, listRecords, readEvents, loadVerified, fingerprint, verifyJournal, LEVELS } from './lib.mjs';
 
 export const LEVEL_TEXT = {
@@ -30,15 +30,22 @@ function mapSection(o, self) {
   const mine = overlaps(teams).filter((v) => !self.selfName || v.teams.includes(self.selfName));
   for (const v of mine) lines.push(`- Open overlap: ${v.teams.join(' and ')} both declare the ${v.kind} "${v.what}". Two teams answering for the same thing is for the humans to settle; say so before working on it.`);
   if (self.selfName) lines.push('A request that reaches into what another team carries is not this team\'s to deliver: say which team, and stop there until the humans have agreed how to proceed.');
-  lines.push(...crossTeam(teams, self.selfName));
+  lines.push(...crossTeam(teams, self.selfName, o));
   if (self.selfName && teams.some((t) => t.root && !t.isSelf)) lines.push('The other teams share this repository: the harness refuses any write in their directories, at every autonomy level.');
   return lines;
 }
 
 /** What other teams have decided that bears on this one, and contradictions between teams. Fails open. */
-function crossTeam(teams, selfName) {
-  let g; try { g = buildOrgGraph(teams); } catch { return []; }
+function crossTeam(teams, selfName, o) {
+  let g; let decided = [];
+  try { decided = orgDecisions(o); g = buildOrgGraph(teams, decided); } catch { return []; }
   const lines = [];
+  // What was decided for several teams binds each of them like one of its own decisions.
+  const binding = selfName ? bindingOn(decided, selfName) : decided.filter((d) => d.inForce);
+  if (binding.length) {
+    lines.push('', `**Decisions of the organisation that bind ${selfName ? 'this team' : 'its teams'}** (full text in ${ORG_DIR}/decisions/; a team does not decide against them)`);
+    for (const d of binding.slice(-8).reverse()) lines.push(`- ${d.id} ${clip(d.title.replace(new RegExp(`^${d.id}\\s+`), ''), 100)}${d.statement ? ` — ${clip(d.statement.replace(/\s+/g, ' '), 220)}` : ''}`);
+  }
   const me = teams.find((t) => t.isSelf);
   if (selfName && me) {
     const bearing = bearingOn(g, selfName, me.scope);
@@ -50,6 +57,7 @@ function crossTeam(teams, selfName) {
   }
   for (const c of g.betweenTeams.filter((x) => !selfName || x.teams.includes(selfName)))
     lines.push(`- Open contradiction between teams: ${c.between.join(' and ')} are both in force. It is for the humans to settle, not for either team to work around.`);
+  if (g.betweenTeams.length || lines.some((l) => l.includes('Open overlap'))) { const a = arbitration(o.org); if (a.arbiter) lines.push(`What two teams cannot settle between them, ${a.arbiter} settles${a.rule ? `, on this criterion: ${clip(a.rule, 200)}` : ''}.`); }
   return lines;
 }
 
@@ -67,7 +75,7 @@ export function orgBrief(o) {
   lines.push(...mapSection(o, {}));
   let teams = []; try { teams = teamsOf(o); } catch { /* fail open */ }
   for (const p of scopeProblems(teams)) lines.push(`- ${p}`);
-  lines.push('', 'Agents propose, humans decide. Skills: /coda:org, /coda:status.');
+  lines.push('', 'Agents propose, humans decide. Skills: /coda:org, /coda:arbitrate, /coda:audit, /coda:status.');
   return lines.join('\n');
 }
 
@@ -121,7 +129,7 @@ export function brief(root, cfg, opts = { refresh: 'never' }) {
     '- Before a choice that is hard to reverse, check the decisions above; if it contradicts one, say so and run `/coda:decide` rather than deciding silently.',
     '- A decision is only made by a human. Record it with `/coda:decide`; do not write decision records on your own initiative.',
     `- Verification is ${cfg.verify.commands.length ? `enforced when you finish: ${cfg.verify.commands.map((c) => `\`${c}\``).join(', ')}` : 'not configured yet (`/coda:init` sets it)'}.`,
-    '- Skills: /coda:intent, /coda:decide, /coda:recall, /coda:graph, /coda:deliver, /coda:patterns, /coda:sync, /coda:audit, /coda:autonomy, /coda:status, /coda:org.');
+    '- Skills: /coda:intent, /coda:decide, /coda:recall, /coda:graph, /coda:deliver, /coda:patterns, /coda:sync, /coda:audit, /coda:autonomy, /coda:status, /coda:org, /coda:arbitrate.');
   return lines.join('\n');
 }
 
@@ -137,6 +145,9 @@ export function status(root, cfg) {
   const lastLevel = levelEvents[levelEvents.length - 1];
   const humans = cfg.team.humans || [];
   const guardian = humans.filter((h) => (h.roles || []).includes('ethical-guardian'));
+  // A guardian the organisation declares, who is not one of this team's humans, is outside the team by construction.
+  let sharedGuardians = [];
+  try { const o = resolveOrg(root, cfg, { refresh: 'never' }); if (o && !o.error) sharedGuardians = orgGuardians(o.org).map((h) => h.name).filter((n) => !humans.some((h) => h.name === n && !h.external)); } catch { /* no organisation to ask */ }
   return {
     team: cfg.team,
     autonomy: { level: cfg.autonomy.level, levels: LEVELS, since: cfg.autonomy.since || lastLevel?.ts || null, perimeter: cfg.autonomy.perimeter },
@@ -149,7 +160,7 @@ export function status(root, cfg) {
         if (!facts?.readable) return facts;
         const o = resolveOrg(root, cfg, { refresh: 'never' });
         const teams = teamsOf(o, { selfRoot: root, selfName: cfg.team.name });
-        const g = buildOrgGraph(teams);
+        const g = buildOrgGraph(teams, orgDecisions(o));
         const me = teams.find((t) => t.isSelf);
         return { ...facts, acrossTeams: { bearingOnThisTeam: me ? bearingOn(g, cfg.team.name, me.scope).map(({ id, title, why }) => ({ id, title, why })) : [], contradictions: g.betweenTeams, recurring: g.recurring } };
       } catch (e) { return { declared: true, readable: false, error: e.message }; }
@@ -179,7 +190,7 @@ export function status(root, cfg) {
       })(),
       harnessInPlace: { check: 'auto', met: cfg.verify.commands.length > 0 && j.count > 0 && j.problems.length === 0, note: 'Verification commands configured, journal recording and intact.' },
       autonomyHeld: { check: 'auto', met: cfg.autonomy.level === 'bounded', since: cfg.autonomy.level === 'bounded' ? (cfg.autonomy.since || lastLevel?.ts || null) : null, note: 'Execution layer working in bounded autonomy; required duration is the team\'s call.' },
-      guardianOutsideTeam: { check: 'auto', met: guardian.length > 0 && guardian.every((h) => h.external === true), note: 'The ethical guardian is declared with "external": true — nobody audits their own decisions.' },
+      guardianOutsideTeam: { check: 'auto', met: (guardian.length > 0 && guardian.every((h) => h.external === true)) || sharedGuardians.length > 0, sharedWithOrganisation: sharedGuardians, note: 'The ethical guardian is declared with "external": true — nobody audits their own decisions.' },
     },
   };
 }

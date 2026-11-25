@@ -51,7 +51,7 @@ export function isCodaBookkeeping(command) {
   if (/[;&|<>`\n]|\$\(/.test(c)) return false;
   const m = /^node\s+("[^"]+"|'[^']+'|\S+)\s+([a-z-]+)/.exec(c);
   if (!m || !isOwnCli(m[1])) return false;
-  if (m[2] === 'org') return /^node\s+("[^"]+"|'[^']+'|\S+)\s+org\s+(status|sync|map|check|decisions)\b/.test(c);
+  if (m[2] === 'org') return /^node\s+("[^"]+"|'[^']+'|\S+)\s+org\s+(status|sync|map|check|decisions|pending|audit|next-id|rule(?!\s+set))\b/.test(c);
   if (m[2] === 'scope') return !/\sscope\s+set\b/.test(c); // reading, or refreshing the local copy
   return ['brief', 'status', 'doctor', 'list', 'next-id', 'journal', 'verify', 'graph'].includes(m[2]);
 }
@@ -87,7 +87,7 @@ export function isReadOnlyCommand(command) {
       if (words.some((w) => ['-delete', '-exec', '-execdir', '-ok', '-fprint', '-fprintf'].includes(w))) return false;
     } else if (cmd === 'node' && isOwnCli(sub)) {
       if (['level', 'init', 'verify'].includes(words[2])) return false;
-      if (words[2] === 'org' && !['status', 'map', 'check', 'decisions'].includes(words[3])) return false;
+      if (words[2] === 'org' && !(['status', 'map', 'check', 'decisions', 'pending', 'audit', 'next-id'].includes(words[3]) || (words[3] === 'rule' && words[4] !== 'set'))) return false;
       if (words[2] === 'scope' && words[3] === 'set') return false;
     } else if (!READ_ONLY.has(cmd)) return false;
   }
@@ -155,6 +155,7 @@ export function decide(root, cfg, input) {
     if (readOnly) return { decision: null };
     if (/coda\.mjs["']?\s+scope\s+set\b/.test(cmd)) return { decision: 'ask', reason: 'Declaring what a team carries is a human decision.' };
     if (/coda\.mjs["']?\s+org\s+(init|join|add-team)\b/.test(cmd)) return { decision: 'ask', reason: 'Creating an organisation, joining one or changing its list of teams is a human decision.' };
+    if (/coda\.mjs["']?\s+org\s+(record|rule\s+set)\b/.test(cmd)) return { decision: cognitive ? 'deny' : 'ask', reason: 'A decision between teams, and the rule that says who takes it, are a human\'s.' };
     if (/coda\.mjs["']?\s+level\b/.test(cmd)) return { decision: 'ask', reason: 'Changing the autonomy level is a human decision.' };
     if (cognitive) return { decision: 'deny', reason: `Cognitive agents (${actor.slice(6)}) only read: they cannot run commands that act on the project. Use Read, Grep and Glob, plain read-only commands (cat, ls, grep, git log, git diff), or the CODA CLI called directly, one invocation per command and without shell variables.` };
     if (level === 'observed') return { decision: 'deny', reason: 'Autonomy level is "observed": agents propose commands, humans run them.' };

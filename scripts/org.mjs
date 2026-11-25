@@ -8,7 +8,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { execFileSync } from 'node:child_process';
-import { codaPath, git, intentSummary, slugify, ROLES, CODA_DIR } from './lib.mjs';
+import { codaPath, git, intentSummary, slugify, listRecords, ROLES, CODA_DIR } from './lib.mjs';
 
 export const ORG_DIR = '.coda-org';
 const STALE_AFTER_MS = 15 * 60 * 1000;
@@ -151,6 +151,9 @@ export function orgFacts(teamRoot, cfg, opts) {
     humans: o.org.humans,
     teams: o.org.teams.map((t) => ({ name: t.name, where: t.path ? `path ${t.path}` : t.repo ? `repo ${t.repo}` : 'not located' })),
     thisTeamRegistered: Boolean(o.team),
+    arbitration: arbitration(o.org),
+    guardians: orgGuardians(o.org).map((h) => h.name),
+    bindingDecisions: bindingOn(orgDecisions(o), cfg.team?.name).map((d) => ({ id: d.id, title: d.title })),
     ...(() => { const teams = teamsOf(o, { selfRoot: teamRoot, selfName: cfg.team?.name, ...opts }); return { map: teams.map(({ name, isSelf, readable, note, scope }) => ({ name, isSelf, readable, note, scope })), overlaps: overlaps(teams), problems: scopeProblems(teams) }; })(),
   };
 }
@@ -225,6 +228,54 @@ export function scopeProblems(teams) {
       if (t.declaredName !== t.name) out.push(`team "${t.name}" calls itself "${t.declaredName}" in its own config`);
       if (!t.scope.domains.length && !t.scope.components.length) out.push(`team "${t.name}" has not declared what it carries`);
     }
+  }
+  return out;
+}
+
+// ------------------------------------------------- arbitration and the guardian
+
+const asList = (v) => (Array.isArray(v) ? v : v ? [v] : []).map((x) => String(x).trim()).filter(Boolean);
+const RETIRED = ['superseded', 'cancelled', 'rejected'];
+
+/**
+ * Who settles what two teams cannot settle between them, and on what criterion.
+ * Written once for the organisation. Unless it says otherwise, the
+ * organisation's intent architect arbitrates.
+ */
+export function arbitration(org) {
+  const a = org?.arbitration || {};
+  const fallback = (org?.humans || []).find((h) => (h.roles || []).includes('intent-architect'));
+  const arbiter = a.arbiter ? String(a.arbiter) : fallback?.name || null;
+  return { arbiter, explicit: Boolean(a.arbiter), rule: a.rule ? String(a.rule) : null };
+}
+
+/** The ethical guardians the organisation declares, shared by its teams. */
+export const orgGuardians = (org) => (org?.humans || []).filter((h) => (h.roles || []).includes('ethical-guardian'));
+
+/** Decisions taken for several teams. They live with the organisation, as X-0001 records. */
+export function orgDecisions(o) {
+  if (!o || o.error) return [];
+  return listRecords(null, 'decisions', orgPath(o.dir)).map((r) => ({
+    ...r, status: String(r.meta.status || '').toLowerCase(), inForce: !RETIRED.includes(String(r.meta.status || '').toLowerCase()),
+    teams: asList(r.meta.teams), settles: asList(r.meta.settles),
+    statement: (/^##\s+Decision\s*\n([\s\S]*?)(?=^##\s|$(?![\s\S]))/m.exec(r.body) || [])[1]?.trim() || '',
+  }));
+}
+
+/** The organisation's decisions in force that bind a team: those naming it, and those naming no team (they bind all). */
+export const bindingOn = (decisions, team) => decisions.filter((d) => d.inForce && (d.teams.length === 0 || d.teams.includes(team) || d.teams.includes('all')));
+
+/** What is wrong with the organisation's decisions as records: wrong maker, unknown teams. Facts for a human. */
+export function arbitrationProblems(o, decisions = orgDecisions(o)) {
+  const out = [];
+  const { arbiter } = arbitration(o.org);
+  const known = new Set(o.org.teams.map((t) => t.name));
+  if (!arbiter) out.push('nobody arbitrates between teams: the organisation declares no intent architect and names no arbiter');
+  for (const d of decisions) {
+    const maker = String(d.meta.maker || '');
+    if (!maker) out.push(`${d.id} names no human who took it`);
+    else if (arbiter && d.inForce && !maker.toLowerCase().includes(arbiter.toLowerCase())) out.push(`${d.id} was taken by "${maker}", but ${arbiter} arbitrates between teams`);
+    for (const t of d.teams) if (t !== 'all' && !known.has(t)) out.push(`${d.id} names team "${t}", which the organisation does not list`);
   }
   return out;
 }
