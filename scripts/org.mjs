@@ -8,7 +8,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { execFileSync } from 'node:child_process';
-import { codaPath, git, intentSummary, ROLES } from './lib.mjs';
+import { codaPath, git, intentSummary, slugify, ROLES, CODA_DIR } from './lib.mjs';
 
 export const ORG_DIR = '.coda-org';
 const STALE_AFTER_MS = 15 * 60 * 1000;
@@ -36,10 +36,15 @@ export function loadOrgFile(dir) {
 
 // ---------------------------------------------------------------- remote mirror
 
-function mirrorDir(teamRoot, repo, ref) {
+function mirrorDir(cache, repo, ref) {
   const key = crypto.createHash('sha256').update(`${repo}\0${ref || ''}`).digest('hex').slice(0, 12);
-  return codaPath(teamRoot, '.state', 'org', key);
+  return path.join(cache, key);
 }
+
+/** Where a team keeps its read-only copies of other repositories. Machine-local, never committed. */
+export const teamCache = (teamRoot) => codaPath(teamRoot, '.state', 'org');
+/** The same, for a session started at the organisation's root rather than in a team. */
+export const orgCache = (orgDir) => orgPath(orgDir, '.state', 'mirrors');
 
 function readMeta(dir) { try { return JSON.parse(fs.readFileSync(dir + '.json', 'utf8')); } catch { return {}; } }
 
@@ -47,8 +52,8 @@ function readMeta(dir) { try { return JSON.parse(fs.readFileSync(dir + '.json', 
  * A read-only local copy of another repository, refreshed by a time-boxed
  * fetch. Offline, the last copy serves. Machine-local and never committed.
  */
-export function mirror(teamRoot, repo, ref, { refresh = 'if-stale', timeoutMs = 8000 } = {}) {
-  const dir = mirrorDir(teamRoot, repo, ref);
+export function mirror(cache, repo, ref, { refresh = 'if-stale', timeoutMs = 8000 } = {}) {
+  const dir = mirrorDir(cache, repo, ref);
   const meta = readMeta(dir);
   const have = fs.existsSync(path.join(dir, '.git'));
   const due = refresh === 'now' || (refresh === 'if-stale' && (!have || Date.now() - (meta.fetchedAt || 0) > STALE_AFTER_MS));
@@ -84,7 +89,7 @@ export function resolveOrg(teamRoot, cfg, opts = {}) {
   const link = cfg.org && typeof cfg.org === 'object' ? cfg.org : null;
   let res;
   if (link?.repo) {
-    const m = mirror(teamRoot, String(link.repo), link.ref ? String(link.ref) : undefined, opts);
+    const m = mirror(teamCache(teamRoot), String(link.repo), link.ref ? String(link.ref) : undefined, opts);
     res = { source: 'remote', location: String(link.repo), dir: m.dir, fetchedAt: m.fetchedAt, fetchError: m.fetchError };
     if (!m.dir) return { ...res, declared: true, error: `the organisation repository ${link.repo} ${m.fetchError || 'has not been fetched yet'} and there is no local copy` };
   } else if (link?.path) {
@@ -131,5 +136,79 @@ export function orgFacts(teamRoot, cfg, opts) {
     humans: o.org.humans,
     teams: o.org.teams.map((t) => ({ name: t.name, where: t.path ? `path ${t.path}` : t.repo ? `repo ${t.repo}` : 'not located' })),
     thisTeamRegistered: Boolean(o.team),
+    ...(() => { const teams = teamsOf(o, { selfRoot: teamRoot, selfName: cfg.team?.name, ...opts }); return { map: teams.map(({ name, isSelf, readable, note, scope }) => ({ name, isSelf, readable, note, scope })), overlaps: overlaps(teams), problems: scopeProblems(teams) }; })(),
   };
+}
+
+// ------------------------------------------------------------------ scope map
+
+const real = (p) => { try { return fs.realpathSync(p); } catch { return path.resolve(p); } };
+const within = (parent, child) => { const rel = path.relative(parent, child); return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel)); };
+const names = (v) => [...new Set((Array.isArray(v) ? v : []).map((x) => slugify(x)).filter((x) => x && x !== 'untitled'))];
+
+/** The organisation resolved from its own root, for a session or a command that is not inside any team. */
+export function orgAt(dir) {
+  const loaded = loadOrgFile(dir);
+  if (loaded.error) return { declared: true, source: 'local', location: '.', dir, error: loaded.error };
+  return { declared: true, source: 'local', location: '.', dir, name: loaded.org.name, org: loaded.org, team: null, intent: intentSummary(null, orgPath(dir, 'intent.md')) };
+}
+
+/**
+ * Every team of the organisation with what it declares it carries. A team in
+ * the same repository is read from disk; one in its own repository from a
+ * read-only copy. Only declarations are read across teams — never journals.
+ */
+export function teamsOf(o, { selfRoot = null, selfName = null, refresh = 'never', timeoutMs = 8000 } = {}) {
+  if (!o || o.error) return [];
+  const cache = selfRoot ? teamCache(selfRoot) : orgCache(o.dir);
+  // Refreshing must never hold a session hostage: past the budget, the copies already here serve.
+  const started = Date.now(); const budget = Math.max(timeoutMs, 10000);
+  return o.org.teams.map((t) => {
+    if (refresh !== 'now' && Date.now() - started > budget) refresh = 'never';
+    const isSelf = Boolean(selfName) && t.name === selfName;
+    let root = null; let note = null; let fetchedAt = null;
+    if (isSelf && selfRoot) root = selfRoot;
+    else if (t.path) root = path.resolve(o.dir, String(t.path));
+    else if (t.repo) { const m = mirror(cache, String(t.repo), t.ref ? String(t.ref) : undefined, { refresh, timeoutMs }); root = m.dir; fetchedAt = m.fetchedAt; if (!root) note = `its repository ${m.fetchError || 'has not been fetched yet'}`; }
+    else note = 'the organisation does not say where it lives';
+    let raw = null;
+    if (root) { try { raw = JSON.parse(fs.readFileSync(path.join(root, CODA_DIR, 'config.json'), 'utf8')); } catch { note = 'it has no readable .coda/config.json'; } }
+    const scope = raw?.scope || {};
+    return {
+      name: t.name, isSelf, where: t.path ? { path: t.path } : t.repo ? { repo: t.repo } : {},
+      root: root && (t.path || isSelf) ? real(root) : null, // only teams sharing this checkout have a place on disk that matters to the guard
+      readable: Boolean(raw), note, fetchedAt,
+      declaredName: raw?.team?.name ?? null,
+      scope: { domains: names(scope.domains), components: names(scope.components), paths: Array.isArray(scope.paths) ? scope.paths.map(String) : ['**'] },
+    };
+  });
+}
+
+/** Two teams claiming the same thing. Stated as a fact for the humans to settle; nothing here picks a winner. */
+export function overlaps(teams) {
+  const found = [];
+  for (let i = 0; i < teams.length; i++) for (let j = i + 1; j < teams.length; j++) {
+    const a = teams[i]; const b = teams[j];
+    for (const kind of ['domains', 'components']) for (const what of a.scope[kind]) if (b.scope[kind].includes(what)) found.push({ kind: kind.slice(0, -1), what, teams: [a.name, b.name] });
+    if (a.root && b.root && (within(a.root, b.root) || within(b.root, a.root))) found.push({ kind: 'directory', what: path.relative(within(a.root, b.root) ? a.root : b.root, within(a.root, b.root) ? b.root : a.root) || '.', teams: [a.name, b.name] });
+  }
+  return found;
+}
+
+/** The other team, sharing this checkout, whose directory holds `abs` — or null. */
+export function owningTeam(teams, abs, selfName) {
+  const hit = teams.filter((t) => t.root && t.name !== selfName && within(t.root, abs)).sort((x, y) => y.root.length - x.root.length)[0];
+  return hit || null;
+}
+
+export function scopeProblems(teams) {
+  const out = [];
+  for (const t of teams) {
+    if (!t.readable) out.push(`team "${t.name}" cannot be read: ${t.note}`);
+    else {
+      if (t.declaredName !== t.name) out.push(`team "${t.name}" calls itself "${t.declaredName}" in its own config`);
+      if (!t.scope.domains.length && !t.scope.components.length) out.push(`team "${t.name}" has not declared what it carries`);
+    }
+  }
+  return out;
 }

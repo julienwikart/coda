@@ -1,6 +1,6 @@
 // The cognitive brief: what every session and every execution agent starts from.
 import { buildGraph } from './graph.mjs';
-import { resolveOrg, orgFacts, ORG_DIR } from './org.mjs';
+import { resolveOrg, orgFacts, teamsOf, overlaps, scopeProblems, ORG_DIR } from './org.mjs';
 import { intentSummary, listRecords, readEvents, loadVerified, fingerprint, verifyJournal, LEVELS } from './lib.mjs';
 
 export const LEVEL_TEXT = {
@@ -19,6 +19,39 @@ export function openPatterns(root) {
   return listRecords(root, 'patterns').filter((p) => ['detected', 'open', 'experimenting'].includes(String(p.meta.status || 'detected').toLowerCase()));
 }
 
+const scopeLine = (s) => [s.domains.length ? `domains: ${s.domains.join(', ')}` : '', s.components.length ? `components: ${s.components.join(', ')}` : ''].filter(Boolean).join(' · ') || 'nothing declared yet';
+
+/** Who carries what. This is how an agent knows a request reaches into another team's scope before touching it. */
+function mapSection(o, self) {
+  let teams; try { teams = teamsOf(o, self); } catch { return []; }
+  if (!teams.length) return [];
+  const lines = ['', '**Who carries what**'];
+  for (const t of teams) lines.push(`- ${t.name}${t.isSelf ? ' (this team)' : ''} — ${t.readable ? scopeLine(t.scope) : `not readable: ${t.note}`}`);
+  const mine = overlaps(teams).filter((v) => !self.selfName || v.teams.includes(self.selfName));
+  for (const v of mine) lines.push(`- Open overlap: ${v.teams.join(' and ')} both declare the ${v.kind} "${v.what}". Two teams answering for the same thing is for the humans to settle; say so before working on it.`);
+  if (self.selfName) lines.push('A request that reaches into what another team carries is not this team\'s to deliver: say which team, and stop there until the humans have agreed how to proceed.');
+  if (self.selfName && teams.some((t) => t.root && !t.isSelf)) lines.push('The other teams share this repository: the harness refuses any write in their directories, at every autonomy level.');
+  return lines;
+}
+
+/** The brief of a session started at the organisation's root, in no team's directory. */
+export function orgBrief(o) {
+  const lines = ['# CODA brief — organisation', ''];
+  if (o.error) return [...lines, `This directory holds an organisation, but ${o.error}. Tell the human.`].join('\n');
+  lines.push(`This session started at the root of ${o.name}, not in a team's directory. Each team has its own intent, autonomy level and verification; here, a change to a file is judged by the rules of the team whose directory holds it, changes to files no team carries ask a human, and commands that act on the repository ask a human. To deliver for a team, start the session in that team's directory.`);
+  const i = o.intent;
+  if (i?.purpose) {
+    lines.push('', `## Organisation — ${o.name}`, clip(i.purpose, 500));
+    if (i.constraints) lines.push('', '**Non-negotiable constraints of the organisation**', clip(i.constraints, 900));
+    if (i.outOfScope) lines.push('', '**Out of scope for the whole organisation**', clip(i.outOfScope, 400));
+  } else lines.push('', `The organisation has not written its intent yet (${ORG_DIR}/intent.md).`);
+  lines.push(...mapSection(o, {}));
+  let teams = []; try { teams = teamsOf(o); } catch { /* fail open */ }
+  for (const p of scopeProblems(teams)) lines.push(`- ${p}`);
+  lines.push('', 'Agents propose, humans decide. Skills: /coda:org, /coda:status.');
+  return lines.join('\n');
+}
+
 /** What the organisation contributes to every team's brief. Reads only; never fetches unless asked to. */
 function orgSection(root, cfg, opts) {
   let o;
@@ -34,6 +67,7 @@ function orgSection(root, cfg, opts) {
   } else lines.push(`The organisation has not written its intent yet (${ORG_DIR}/intent.md).`);
   if (o.source === 'remote') lines.push('', `_Read from ${o.location}, as of ${o.fetchedAt ? new Date(o.fetchedAt).toISOString().slice(0, 16).replace('T', ' ') + ' UTC' : 'an unknown date'}${o.fetchError ? ` — the last refresh ${o.fetchError}, so this may be out of date` : ''}._`);
   if (!o.team) lines.push('', `_This team ("${cfg.team.name || 'unnamed'}") is not in the organisation's list of teams yet._`);
+  lines.push(...mapSection(o, { selfRoot: root, selfName: cfg.team.name, ...opts }));
   return lines;
 }
 
@@ -103,7 +137,17 @@ export function status(root, cfg) {
     },
     entryConditions: {
       seniority: { check: 'human', note: 'Each human can judge an agent output alone in their domain. Only the team can assert this.' },
-      independentScope: { check: 'human', note: 'The product ships without daily dependence on another team.' },
+      independentScope: (() => {
+        const human = { check: 'human', note: 'The product ships without daily dependence on another team.' };
+        try {
+          const o = orgFacts(root, cfg, { refresh: 'never' });
+          if (!o?.readable) return human;
+          const me = o.map.find((t) => t.isSelf);
+          const declared = Boolean(me && (me.scope.domains.length || me.scope.components.length));
+          const clash = o.overlaps.filter((v) => v.teams.includes(cfg.team.name));
+          return { check: 'partly', met: declared && clash.length === 0 ? null : false, declared, overlaps: clash, note: 'The scope is declared and no other team claims the same thing — read from the organisation\'s map. Whether the product ships without daily dependence on another team is still the humans\' to assert.' };
+        } catch { return human; }
+      })(),
       harnessInPlace: { check: 'auto', met: cfg.verify.commands.length > 0 && j.count > 0 && j.problems.length === 0, note: 'Verification commands configured, journal recording and intact.' },
       autonomyHeld: { check: 'auto', met: cfg.autonomy.level === 'bounded', since: cfg.autonomy.level === 'bounded' ? (cfg.autonomy.since || lastLevel?.ts || null) : null, note: 'Execution layer working in bounded autonomy; required duration is the team\'s call.' },
       guardianOutsideTeam: { check: 'auto', met: guardian.length > 0 && guardian.every((h) => h.external === true), note: 'The ethical guardian is declared with "external": true — nobody audits their own decisions.' },

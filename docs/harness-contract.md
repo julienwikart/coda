@@ -21,8 +21,11 @@ When the team belongs to an organisation, the brief also carries the organisatio
 | Command in `denyCommands` | deny | deny | deny |
 | Edit the journal | deny | deny | deny |
 | Edit `.coda/config.json`, change level | ask | ask | ask |
+| Write in another team's directory (shared repository) | deny | deny | deny |
 | Edit anything under `.coda-org/` | ask | ask | ask |
 | Edit the organisation's journal, or the local copy of a remote organisation | deny | deny | deny |
+
+Each team declares what it carries (`scope` in `.coda/config.json`: domains, components, paths), and the organisation's map is the sum of these declarations. Before an agent acts, its brief has told it who carries what and which overlaps are open (G1); in a repository several teams share, the guard refuses a write in another team's directory whatever the autonomy level.
 
 At every level, cognitive agents cannot write outside `.coda/` or run commands that act on the project. An unreadable or invalid configuration falls back to `observed`: a broken config never widens permissions.
 *Adapter:* a pre-tool-use hook on file-writing tools and the shell returns allow, ask or deny.
@@ -41,7 +44,9 @@ At every level, cognitive agents cannot write outside `.coda/` or run commands t
 Stated plainly, so nobody delegates on a false assumption:
 
 - **A remote organisation is as fresh as its last fetch.** Offline, or when its repository cannot be reached, the last copy serves; a team that has never fetched it starts its session without the organisation's constraints, and the brief says exactly that. Nothing here blocks work: only the guard fails closed.
-- **In a repository holding several teams, the harness follows the directory the session starts in.** Start it in the team's directory; from the repository root no team is found and nothing is enforced.
+- **The wall between teams exists only inside one repository, and only for file-editing tools.** There the harness refuses a write in another team's directory. Across repositories, and for domains and components rather than directories, nothing is enforced: the map in the brief tells the agent whose scope a request reaches, and acting on it is guidance. A shell command can still write anywhere the process can.
+- **A session started at the root of a shared repository belongs to no team.** Each file it changes is judged by the rules of the team that carries it and counts towards that team's verification gate; a file no team carries, and any command that acts, asks a human. There is no autonomy level of its own at the root.
+- **Overlaps are detected between declarations, not between realities.** Two teams declaring the same domain or component is reported at once. Two teams working on the same thing under different names is not.
 - **Shell commands are not sandboxed.** The guard reads the command text. At `bounded`, a command that is not in `askCommands` or `denyCommands` follows your harness's own permission rules, and a shell command can write anywhere the process can. The perimeter is exact for file-editing tools and best-effort for the shell. Use your harness's sandbox for a hard boundary.
 - **The journal is tamper-evident, not tamper-proof.** Someone with write access to the repository can rewrite a whole stream. Protect it the way you protect history: review, branch protection.
 - **Human attribution is declared, not authenticated.** `--by <name>` and `human:<name>` actors record who the session says decided. The harness's own approval prompt is the actual control.
@@ -68,6 +73,7 @@ One JSON object per line, in `.coda/journal/<YYYY-MM>/<session>.jsonl`:
 | `review` | `passed`, `failed` | harness |
 | `autonomy` | `changed` | harness, on a human's decision |
 | `org` | `initialized`, `team-added`, `joined` | harness, on a human's decision |
+| `scope` | `declared` | harness, on a human's decision |
 | `decision`, `intent`, `pattern`, `memory`, `audit`, `delivery` | `recorded`, `updated`, `sync`, `reviewed`, `recall`, `completed` | skills, via `coda journal add` |
 
 ## Adapting another harness

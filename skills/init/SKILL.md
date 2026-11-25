@@ -38,7 +38,7 @@ coda init --name "<team>" --level <level> --by "<who decided>" \
 
 `--write` replaces the default writable perimeter; `--protect` adds to the paths protected at every level (secrets, CI and infrastructure are protected by default). `external` marks a human outside the team. Later changes are made in `.coda/config.json`; the harness asks a human to approve each of them, because that file defines what agents are allowed to do.
 
-If the repository already holds an organisation (a `.coda-org/` directory above this project), the team belongs to it automatically; tell the human, and that someone of the organisation registers the team there (`/coda:org`).
+If the repository already holds an organisation (a `.coda-org/` directory above this project), the team belongs to it automatically; tell the human, and that someone of the organisation registers the team there (`/coda:org`). Ask what the team carries and declare it — `coda scope set --by "<who>" --domain "<domain>" --component "<component>"` — so that the other teams' agents know what is this team's.
 
 ## 4. Hand over
 

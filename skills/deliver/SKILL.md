@@ -13,6 +13,8 @@ The CODA command line is `node "${CLAUDE_PLUGIN_ROOT}/scripts/coda.mjs"`, writte
 
 Read `coda brief` if it is not already in context. If the intent is still a draft, stop and say so: there is nothing to steer by yet (`/coda:intent`). Ask the `coda:memory` agent what the team has decided that bears on this request.
 
+If the team belongs to an organisation, check the request against the map in the brief: when it reaches into what another team carries, tell the human which team and which part before anything is built, and deliver only what is this team's. Do not work around it; the other team's scope is theirs to change.
+
 If the request contradicts the intent or a decision in force, tell the human before anything is built. They either adjust the request or revisit the decision with `/coda:decide`. Delivering around a decision silently is the one thing this framework exists to prevent.
 
 ## 2. Plan

@@ -30,6 +30,8 @@ export const DEFAULT_CONFIG = {
   // Link to an organisation: { path } (same checkout) or { repo, ref? } (another repository). Null: found by
   // walking up to a .coda-org/ in the same repository, or no organisation at all.
   org: null,
+  // What this team carries: the domains and components it answers for, and where they live.
+  scope: { domains: [], components: [], paths: ['**'] },
 };
 
 // ---------------------------------------------------------------- project root
@@ -260,9 +262,11 @@ export function fingerprint(root) {
   if (status === null) return null; // not a git repository
   const h = crypto.createHash('sha256').update(head || 'no-head').update('\0').update(status).update('\0');
   h.update(git(root, ['diff', 'HEAD', '--', '.', `:(exclude)${CODA_DIR}`]) || git(root, ['diff', '--', '.', `:(exclude)${CODA_DIR}`]) || '');
+  // git prints these paths from the top of the repository, which is not the team's root when several teams share one.
+  const top = git(root, ['rev-parse', '--show-toplevel']) || root;
   for (const line of status.split('\n')) {
     if (!line.startsWith('??')) continue;
-    try { h.update(line).update(fs.readFileSync(path.join(root, line.slice(3).replace(/^"|"$/g, '')))); } catch { /* unreadable: name is enough */ }
+    try { h.update(line).update(fs.readFileSync(path.join(top, line.slice(3).replace(/^"|"$/g, '')))); } catch { /* unreadable: name is enough */ }
   }
   return h.digest('hex').slice(0, 16);
 }

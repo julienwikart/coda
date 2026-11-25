@@ -9,12 +9,12 @@ import {
   DEFAULT_CONFIG, LEVELS, ROLES, CODA_DIR, git, cliSession,
 } from './lib.mjs';
 import { brief, status } from './brief.mjs';
-import { resolveOrg, orgFacts, findOrgRoot, loadOrgFile, orgPath, parseHuman, ORG_DIR } from './org.mjs';
+import { resolveOrg, orgFacts, findOrgRoot, loadOrgFile, orgPath, parseHuman, orgAt, teamsOf, overlaps, scopeProblems, ORG_DIR } from './org.mjs';
 import { buildGraph, neighbourhood, toMermaid, toMarkdown, ENTITY_TYPES, LINK_TYPES } from './graph.mjs';
 
 // Events only the harness may write: a model must not be able to claim that
 // verification passed or that a human changed the autonomy level.
-const RESERVED = ['session', 'run', 'tool', 'guard', 'verify', 'review', 'autonomy', 'coda', 'org'];
+const RESERVED = ['session', 'run', 'tool', 'guard', 'verify', 'review', 'autonomy', 'coda', 'org', 'scope'];
 
 const USAGE = `coda — cognitive orchestration for delivery agents
 
@@ -29,7 +29,10 @@ const USAGE = `coda — cognitive orchestration for delivery agents
   coda org init --name <organisation> --by <human> [--human "<name>=<role>,…"]...
   coda org add-team --name <team> (--path <dir> | --repo <git url>) --by <human>
   coda org join (--path <dir> | --repo <git url> [--ref <branch>]) --by <human>
-  coda org status | sync             the organisation this team belongs to; refresh its local copy
+  coda org status | sync             the organisation this team belongs to; refresh its local copies
+  coda org map | check               who carries what; overlaps and gaps (check exits 1 on an overlap)
+  coda scope                         what this team declares it carries
+  coda scope set --by <human> [--domain <d>]... [--component <c>]... [--path <glob>]...
   coda journal add <type> [--data '<json>'] [--actor <who>]
   coda journal tail [n] | query [--since <iso|Nd>] [--type <prefix>] | verify
   coda verify [--force]              run the verification commands (skipped if this exact state already passed)
@@ -139,7 +142,7 @@ function org(pos, opt) {
     fs.writeFileSync(orgPath(dir, 'org.json'), JSON.stringify({ version: 1, name: String(opt.name), humans, teams: [] }, null, 2) + '\n');
     fs.writeFileSync(orgPath(dir, 'intent.md'), INTENT_TEMPLATE.replace('level: team', 'level: organization').replace('why this team and this product exist', 'why this organisation exists').replace(/\n## Regrowth signal[\s\S]*$/, '\n'));
     fs.writeFileSync(orgPath(dir, 'decisions', '.gitkeep'), '');
-    fs.writeFileSync(orgPath(dir, '.gitignore'), '*.lock\n');
+    fs.writeFileSync(orgPath(dir, '.gitignore'), '*.lock\n.state/\n');
     appendEvent(dir, { type: 'org.initialized', actor: `human:${by}`, session: cliSession(dir), base: orgPath(dir), data: { name: String(opt.name) } });
     console.log(`Initialised ${ORG_DIR}/ for "${opt.name}". Next: write ${ORG_DIR}/intent.md, then register each team with \`coda org add-team\`.`);
   } else if (sub === 'add-team') {
@@ -169,7 +172,38 @@ function org(pos, opt) {
     if (!facts) { console.log('This team belongs to no organisation.'); return; }
     console.log(JSON.stringify(facts, null, 2));
     if (sub === 'sync' && facts.fetchError) process.exit(1);
-  } else fail('org: use init, add-team, join, status or sync.');
+  } else if (sub === 'map' || sub === 'check') {
+    // Works from inside a team and from the organisation's own root.
+    const root = findRoot(process.cwd());
+    const cfg = root ? loadConfig(root) : null;
+    const o = root ? resolveOrg(root, cfg, { refresh: 'never' }) : (() => { const dir = findOrgRoot(process.cwd()); return dir ? orgAt(dir) : null; })();
+    if (!o) fail('no organisation here: this is neither a team that belongs to one nor an organisation\'s root.');
+    if (o.error) fail(o.error);
+    const teams = teamsOf(o, { selfRoot: root, selfName: cfg?.team?.name });
+    const clash = overlaps(teams); const problems = scopeProblems(teams);
+    if (sub === 'map') { console.log(JSON.stringify({ organisation: o.name, teams: teams.map(({ name, isSelf, where, readable, note, scope }) => ({ name, isSelf, where, readable, note, scope })), overlaps: clash, problems }, null, 2)); return; }
+    for (const v of clash) console.log(`overlap: ${v.teams.join(' and ')} both declare the ${v.kind} "${v.what}"`);
+    for (const p of problems) console.log(`gap: ${p}`);
+    if (clash.length) process.exit(1);
+    console.log(`${teams.length} team(s), no overlap${problems.length ? `, ${problems.length} gap(s) above` : ''}.`);
+  } else fail('org: use init, add-team, join, status, sync, map or check.');
+}
+
+function scope(root, pos, opt) {
+  const cfg = loadConfig(root); if (cfg._error) fail(cfg._error);
+  if (pos[0] !== 'set') { console.log(JSON.stringify(cfg.scope, null, 2)); return; }
+  const by = who(opt);
+  const next = { domains: list(opt.domain).map(slugify), components: list(opt.component).map(slugify), paths: list(opt.path).length ? list(opt.path) : cfg.scope.paths };
+  if (!next.domains.length && !next.components.length) fail('declare at least one --domain or --component.');
+  cfg.scope = next; saveConfig(root, cfg);
+  appendEvent(root, { type: 'scope.declared', actor: `human:${by}`, session: cliSession(root), data: next });
+  console.log(`Scope of "${cfg.team.name}": ${[...next.domains.map((d) => `domain ${d}`), ...next.components.map((c) => `component ${c}`)].join(', ')}.`);
+  // Said at the moment of declaring, not discovered later.
+  try {
+    const o = resolveOrg(root, cfg, { refresh: 'never' });
+    if (o && !o.error) for (const v of overlaps(teamsOf(o, { selfRoot: root, selfName: cfg.team.name })).filter((x) => x.teams.includes(cfg.team.name)))
+      console.log(`Overlap: ${v.teams.filter((t) => t !== cfg.team.name)[0]} also declares the ${v.kind} "${v.what}". Two teams answering for the same thing is for the humans to settle.`);
+  } catch { /* the declaration stands even if the organisation cannot be read */ }
 }
 
 function journal(root, pos, opt) {
@@ -276,6 +310,7 @@ switch (cmd) {
   case 'init': init(opt); break;
   case 'brief': { const root = needRoot(); console.log(brief(root, loadConfig(root))); break; }
   case 'org': org(pos, opt); break;
+  case 'scope': scope(needRoot(), pos, opt); break;
   case 'status': { const root = needRoot(); console.log(JSON.stringify(status(root, loadConfig(root)), null, 2)); break; }
   case 'next-id': {
     const root = needRoot();
