@@ -74,7 +74,7 @@ The weak point, faced head-on: at two, each person is a single point of failure.
 
 ## From eight to two
 
-A team of eight does not lose five people. It splits into four sandwich teams once the agents' autonomy is proven.
+A team of eight does not lose six people. It splits into four sandwich teams once the agents' autonomy is proven.
 
 1. **Equip.** The team keeps its size and installs the harness and the execution layer. *Move on when* agents hold supervised execution.
 2. **Connect cognition.** Memory, patterns and coordination take over from synchronisation meetings. *Move on when* decisions are found in the memory without being asked for again.
