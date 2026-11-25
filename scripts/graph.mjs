@@ -24,7 +24,7 @@ export function parseEntity(raw) {
 export function buildGraph(root) {
   const decisions = listRecords(root, 'decisions');
   const patterns = listRecords(root, 'patterns');
-  const nodes = []; const edges = []; const problems = [];
+  const nodes = []; const edges = []; const problems = []; const external = [];
   const entities = new Map();
   const ids = new Set([...decisions, ...patterns].map((r) => r.id));
 
@@ -47,6 +47,8 @@ export function buildGraph(root) {
     mention(d, 'decisions');
     for (const link of LINK_TYPES) {
       for (const target of asList(d.meta[link])) {
+        // team/D-0001 names another team's decision: it is resolved in the organisation's graph, not here.
+        if (target.includes('/')) { external.push({ from: d.id, to: target, type: link }); continue; }
         if (target === d.id) problems.push(`${d.file}: ${link} points to itself`);
         else if (!ids.has(target)) problems.push(`${d.file}: ${link} names ${target}, which has no record`);
         // related and contradicts read the same in both directions: keep one edge per pair.
@@ -79,7 +81,7 @@ export function buildGraph(root) {
   for (const [, same] of byName) if (same.length > 1) problems.push(`the same name appears under several types: ${same.join(', ')}`);
 
   return {
-    nodes, edges, entities: entityList,
+    nodes, edges, entities: entityList, external,
     // A constraint or a risk that three or more decisions run into is a candidate pattern.
     recurring: entityList.filter((e) => ['constraint', 'risk'].includes(e.type) && e.decisions.length >= 3).map((e) => ({ entity: e.id, decisions: e.decisions })),
     contradictions, problems,
@@ -128,4 +130,87 @@ export function toMarkdown(graph) {
   if (graph.recurring.length) lines.push('## Recurring constraints and risks', '', ...graph.recurring.map((r) => `- \`${r.entity}\` — ${r.decisions.join(', ')}`), '');
   lines.push('## Entities', '', '| Entity | Decisions | Patterns |', '|---|---|---|', ...graph.entities.map((e) => `| \`${e.id}\` | ${e.decisions.join(', ') || '—'} | ${e.patterns.join(', ') || '—'} |`), '');
   return lines.join('\n');
+}
+
+// ------------------------------------------------------------ across teams
+
+const RETIRED = ['superseded', 'cancelled', 'rejected'];
+// Entities that say two decisions are about the same thing. A technology shared by everyone says nothing.
+const BINDING = ['component', 'constraint', 'risk', 'process', 'metric'];
+
+/**
+ * The graph of a whole organisation: each team's graph, with ids qualified by
+ * the team's name (catalog/D-0002), joined through the entities they share and
+ * the links one team's decision declares to another's. Derived on demand from
+ * whatever copy of each team is readable; never stored.
+ */
+export function buildOrgGraph(teams) {
+  const nodes = []; const edges = []; const problems = []; const entities = new Map();
+  const q = (team, id) => `${team}/${id}`;
+  const pending = [];
+  for (const t of teams) {
+    if (!t.dir) { problems.push(`team "${t.name}" could not be read${t.note ? `: ${t.note}` : ''}`); continue; }
+    let g; try { g = buildGraph(t.dir); } catch (e) { problems.push(`team "${t.name}": ${e.message}`); continue; }
+    for (const n of g.nodes) {
+      if (n.kind === 'intent') continue;
+      if (n.kind === 'entity') {
+        if (!entities.has(n.id)) entities.set(n.id, { id: n.id, type: n.type, name: n.title, decisions: [], patterns: [], teams: [] });
+        continue;
+      }
+      nodes.push({ ...n, id: q(t.name, n.id), team: t.name, file: n.file ? `${t.dir}/${n.file}` : undefined });
+    }
+    for (const e of g.entities) {
+      const ent = entities.get(e.id);
+      ent.decisions.push(...e.decisions.map((id) => q(t.name, id)));
+      ent.patterns.push(...e.patterns.map((id) => q(t.name, id)));
+      if (!ent.teams.includes(t.name)) ent.teams.push(t.name);
+    }
+    for (const e of g.edges) edges.push({ from: q(t.name, e.from), to: e.type === 'mentions' ? e.to : q(t.name, e.to), type: e.type });
+    for (const x of g.external) pending.push({ from: q(t.name, x.from), to: x.to, type: x.type });
+    for (const p of g.problems) problems.push(`${t.name}: ${p}`);
+  }
+  const byId = new Map(nodes.map((n) => [n.id, n]));
+  for (const x of pending) {
+    if (!byId.has(x.to)) { problems.push(`${x.from}: ${x.type} names ${x.to}, which no readable team holds`); continue; }
+    if (['related', 'contradicts'].includes(x.type) && edges.some((e) => e.type === x.type && e.from === x.to && e.to === x.from)) continue;
+    edges.push(x);
+  }
+  const inForce = (id) => { const n = byId.get(id); return n && n.kind === 'decision' && !RETIRED.includes(n.status); };
+  const entityList = [...entities.values()].sort((a, b) => b.teams.length - a.teams.length || b.decisions.length - a.decisions.length || a.id.localeCompare(b.id));
+  for (const e of entityList) nodes.push({ id: e.id, kind: 'entity', type: e.type, title: e.name, decisions: e.decisions.length, patterns: e.patterns.length, teams: e.teams });
+  const contradictions = edges.filter((e) => e.type === 'contradicts' && inForce(e.from) && inForce(e.to))
+    .map((e) => ({ between: [e.from, e.to], teams: [byId.get(e.from).team, byId.get(e.to).team] }));
+  return {
+    nodes, edges, entities: entityList, problems,
+    contradictions,
+    betweenTeams: contradictions.filter((c) => c.teams[0] !== c.teams[1]),
+    // The same constraint or risk met by decisions in force, three times or more, in more than one team.
+    recurring: entityList.filter((e) => ['constraint', 'risk'].includes(e.type) && e.teams.length > 1 && e.decisions.filter(inForce).length >= 3)
+      .map((e) => ({ entity: e.id, teams: e.teams, decisions: e.decisions.filter(inForce) })),
+    // What more than one team has decided about: where a collision would happen.
+    shared: entityList.filter((e) => BINDING.includes(e.type) && e.teams.length > 1).map((e) => ({ entity: e.id, teams: e.teams, decisions: e.decisions.filter(inForce) })),
+  };
+}
+
+/**
+ * Decisions in force in other teams that bear on this team: they are about
+ * something this team declares it carries, or about a component, constraint or
+ * risk this team has also decided on. This is what lets an agent see a
+ * collision before any work starts.
+ */
+export function bearingOn(orgGraph, team, scope = { domains: [], components: [] }) {
+  const carried = new Set([...(scope.domains || []), ...(scope.components || [])]);
+  const mine = new Set(orgGraph.entities.filter((e) => BINDING.includes(e.type) && e.teams.includes(team)).map((e) => e.id));
+  const out = new Map();
+  for (const edge of orgGraph.edges) {
+    if (edge.type !== 'mentions' || edge.from.startsWith(`${team}/`)) continue;
+    const n = orgGraph.nodes.find((x) => x.id === edge.from);
+    if (!n || n.kind !== 'decision' || RETIRED.includes(n.status)) continue;
+    const ent = orgGraph.entities.find((e) => e.id === edge.to);
+    const why = carried.has(ent.name) ? `is about ${ent.type} "${ent.name}", which this team carries` : mine.has(ent.id) ? `is about ${ent.type} "${ent.name}", which this team has also decided on` : null;
+    if (!why) continue;
+    const cur = out.get(n.id);
+    if (!cur || (why.includes('carries') && !cur.why.includes('carries'))) out.set(n.id, { id: n.id, team: n.team, title: n.title, date: n.date, file: n.file, why, carried: why.includes('carries') });
+  }
+  return [...out.values()].sort((a, b) => Number(b.carried) - Number(a.carried) || String(b.date).localeCompare(String(a.date)));
 }

@@ -11,6 +11,8 @@ The CODA command line is `node "${CLAUDE_PLUGIN_ROOT}/scripts/coda.mjs"`, writte
 
 Delegate detection to the `coda:pattern` agent, giving it the period (30 days unless the user says otherwise) and the CLI line above. It reads the journal, the decisions, the knowledge graph (constraints and risks that recur across decisions), the known patterns and the git history, and returns at most five patterns with their evidence.
 
+When the team belongs to an organisation, the agent also reports recurrences across teams. Those are the organisation's to act on: present them apart from the team's own, and do not record a review decision for them here on the other teams' behalf.
+
 Present each one with its occurrences, so the human can check the evidence, and ask for a decision on each:
 
 - **Ignore** — not a real pattern, or not worth acting on. Record why; a pattern ignored twice for the same reason should stop being raised.

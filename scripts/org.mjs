@@ -48,6 +48,19 @@ export const orgCache = (orgDir) => orgPath(orgDir, '.state', 'mirrors');
 
 function readMeta(dir) { try { return JSON.parse(fs.readFileSync(dir + '.json', 'utf8')); } catch { return {}; } }
 
+const MIRRORED = [`${ORG_DIR}/`, `${CODA_DIR}/`, `!${CODA_DIR}/journal/`, `!${CODA_DIR}/.state/`];
+
+function dropJournals(dir, depth = 0) {
+  if (depth > 6) return;
+  let entries; try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
+  for (const e of entries) {
+    if (!e.isDirectory() || e.name === '.git' || e.name === 'node_modules') continue;
+    const p = path.join(dir, e.name);
+    if (e.name === CODA_DIR) fs.rmSync(path.join(p, 'journal'), { recursive: true, force: true });
+    else dropJournals(p, depth + 1);
+  }
+}
+
 /**
  * A read-only local copy of another repository, refreshed by a time-boxed
  * fetch. Offline, the last copy serves. Machine-local and never committed.
@@ -63,11 +76,13 @@ export function mirror(cache, repo, ref, { refresh = 'if-stale', timeoutMs = 800
       if (!have) {
         fs.mkdirSync(path.dirname(dir), { recursive: true });
         fs.rmSync(dir, { recursive: true, force: true });
-        run(['clone', '--quiet', '--depth', '1', ...(ref ? ['--branch', ref] : []), repo, dir]);
-      } else {
-        run(['fetch', '--quiet', '--depth', '1', 'origin', ref || 'HEAD'], dir);
-        run(['reset', '--quiet', '--hard', 'FETCH_HEAD'], dir);
-      }
+        run(['clone', '--quiet', '--depth', '1', '--no-checkout', ...(ref ? ['--branch', ref] : []), repo, dir]);
+      } else run(['fetch', '--quiet', '--depth', '1', 'origin', ref || 'HEAD'], dir);
+      // Only what teams declare and decide is copied: no code, and never a journal. What a team
+      // did day to day stays with that team; nothing here can be turned into a comparison of activity.
+      try { run(['sparse-checkout', 'set', '--no-cone', ...MIRRORED], dir); } catch { /* older git: the journals are removed below */ }
+      run(['reset', '--quiet', '--hard', have ? 'FETCH_HEAD' : 'HEAD'], dir);
+      dropJournals(dir);
       meta.fetchedAt = Date.now(); meta.error = null;
     } catch (e) {
       if (!fs.existsSync(path.join(dir, '.git'))) fs.rmSync(dir, { recursive: true, force: true });
@@ -175,6 +190,7 @@ export function teamsOf(o, { selfRoot = null, selfName = null, refresh = 'never'
     if (root) { try { raw = JSON.parse(fs.readFileSync(path.join(root, CODA_DIR, 'config.json'), 'utf8')); } catch { note = 'it has no readable .coda/config.json'; } }
     const scope = raw?.scope || {};
     return {
+      dir: raw ? root : null, // where its declarations and records can be read, wherever that is
       name: t.name, isSelf, where: t.path ? { path: t.path } : t.repo ? { repo: t.repo } : {},
       root: root && (t.path || isSelf) ? real(root) : null, // only teams sharing this checkout have a place on disk that matters to the guard
       readable: Boolean(raw), note, fetchedAt,

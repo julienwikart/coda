@@ -16,7 +16,7 @@ export const coda = (cwd, ...args) => spawnSync('node', [CLI, ...args], { cwd, e
 const g = (cwd, ...args) => execFileSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', ...args], { cwd, stdio: 'ignore' });
 
 export function gitInit(dir) { fs.mkdirSync(dir, { recursive: true }); g(dir, 'init', '-q', '-b', 'main'); g(dir, 'commit', '-q', '--allow-empty', '-m', 'init'); }
-export function commitAll(dir, msg = 'update') { g(dir, 'add', '-A'); g(dir, 'commit', '-q', '-m', msg); }
+export function commitAll(dir, msg = 'update') { g(dir, 'add', '-A'); g(dir, 'commit', '-q', '--allow-empty', '-m', msg); }
 
 export const ORG_INTENT = (constraint = 'Customer data never leaves the EU region.') => `---
 level: organization

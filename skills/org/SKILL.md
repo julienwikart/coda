@@ -34,6 +34,14 @@ Together the declarations form the map, and every team's brief carries it. `coda
 
 In a repository several teams share, the harness refuses any write in another team's directory, at every autonomy level. Across repositories there is no such wall: the map in the brief is what tells an agent it is about to reach into another team's scope.
 
+## What teams see of each other
+
+Each team's decisions, patterns and declarations are readable by the others: `/coda:recall` searches every team's memory, each brief lists the decisions in force elsewhere that bear on the team, and a contradiction between two teams' decisions shows in both their briefs. Nobody maintains this by hand; it is read from the records each team already writes when it decides.
+
+Two things follow. A decision is visible to other teams once it is committed and, across repositories, pushed and fetched: `coda org sync` refreshes the copies, and each session does it at start. And a decision is found across teams through its entities, so a record without entities is invisible next door (`coda graph --check`).
+
+Journals never cross teams. What a team did day to day stays with that team.
+
 ## Inspect it
 
 `coda org status` shows the organisation this team belongs to, its teams, whether this team is registered, and, for a remote organisation, when its copy was last refreshed. `coda org sync` refreshes it now. If the brief says the organisation could not be read, say so plainly: the team is then working without the organisation's constraints in front of it.

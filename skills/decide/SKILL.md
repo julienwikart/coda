@@ -15,7 +15,7 @@ State the decision to take in one sentence and get the human to confirm it. Coll
 
 ## 2. Ask the memory
 
-Delegate to the `coda:memory` agent: the decision, the options, and the question "what have we decided that bears on this, and does any option contradict a decision in force or the intent? Which entities and links would place this decision in the graph?". Pass it the CLI line above. Show the human what came back, contradictions first. If an option contradicts a decision in force, that is not a blocker — it means this decision would supersede the old one, and the human should know it is doing so.
+Delegate to the `coda:memory` agent: the decision, the options, and the question "what have we decided that bears on this, and does any option contradict a decision in force or the intent? Which entities and links would place this decision in the graph?". Pass it the CLI line above. Show the human what came back, contradictions first. If an option contradicts a decision in force, that is not a blocker — it means this decision would supersede the old one, and the human should know it is doing so. A contradiction with another team's decision (`team/D-0001`) is different: this team cannot supersede it. Say which team and which decision, and that the humans of both teams have to settle it; if the human still decides here, the record carries `contradicts: [team/D-0001]`, which shows the open contradiction in both teams' briefs until it is settled.
 
 ## 3. Simulate
 
