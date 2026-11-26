@@ -5,7 +5,7 @@ description: Run an intent sync — check whether what the team actually decided
 
 # Intent sync
 
-A short, regular check that the team is still doing what it said it was for. It replaces the status meeting: the facts are already in the memory and the journal.
+A short, regular check that the team is still doing what it said it was for. The facts are already in the memory and the journal; this reads them.
 
 The CODA command line is `node "${CLAUDE_PLUGIN_ROOT}/scripts/coda.mjs"`, written `coda` below. Run it from the project root.
 

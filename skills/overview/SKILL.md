@@ -1,11 +1,11 @@
 ---
 name: overview
-description: Show where the whole organisation stands — which scopes are carried and by which team, what is open between teams, what waits for an arbitration, which teams say they are too small. Use when the user asks for the state of the organisation, of all teams, for what needs their attention across teams, or instead of a synchronisation meeting between teams.
+description: Show where the whole organisation stands — which scopes are carried and by which team, what is open between teams, what waits for an arbitration, which teams say they are too small. Use when the user asks for the state of the organisation or of all teams, or for what needs their attention across teams.
 ---
 
 # The organisation at a glance
 
-This replaces the meeting where teams tell each other where they are. The facts are already in what each team declares and decides; nobody has to report.
+Where the organisation stands is already in what each team declares and decides. This reads it; nobody has to report.
 
 The CODA command line is `node "${CLAUDE_PLUGIN_ROOT}/scripts/coda.mjs"`, written `coda` below.
 

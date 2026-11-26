@@ -46,14 +46,31 @@ Trois étages, chacun ne parlant qu'à son voisin : les humains portent l'intent
 | `/coda:decide <question>` | Un choix coûteux à défaire : mémoire, simulation, un humain décide, c'est enregistré. |
 | `/coda:recall <question>` | « Qu'avions-nous décidé sur… ? » |
 | `/coda:graph <sujet>` | Ce qui touche un composant, une contrainte, un risque ; comment les décisions dépendent les unes des autres ou se contredisent. |
-| `/coda:patterns` | Ce qui se répète ; ignorer, corriger ou expérimenter. Remplace la rétrospective. |
-| `/coda:sync` | Sert-on toujours l'intention ? Remplace le point d'avancement. |
+| `/coda:patterns` | Ce qui se répète, lu dans ce qui s'est réellement passé ; ignorer, corriger ou expérimenter. |
+| `/coda:sync` | Sert-on toujours l'intention ? Lu dans la mémoire et le journal. |
 | `/coda:audit` | Les éléments pour l'Ethical Guardian. |
 | `/coda:autonomy` | Élargir ou réduire l'autonomie des agents, sur la foi du journal. |
 | `/coda:status` | Où en est l'équipe, et si le harness est réellement en place. |
-| `/coda:org` | Plusieurs équipes : l'intention et les contraintes de l'organisation, déclarées une fois et remises à chaque équipe. |
+| `/coda:org` | Plusieurs équipes : l'intention de l'organisation, la carte de qui porte quoi, les planchers de chaque harness. |
+| `/coda:arbitrate` | Régler ce que deux équipes ne peuvent pas régler entre elles ; un humain nommé décide. |
+| `/coda:overview` | L'organisation d'un coup d'œil : périmètres portés, ce qui est ouvert entre équipes. |
+| `/coda:split` | Faire d'une équipe plusieurs sandwich teams, chacune avec ce dont elle hérite. |
 
 Les commandes ne sont pas nécessaires pour que le harness agisse : dès que `.coda/` existe, toute session dans le projet reçoit le brief, les garde-fous, le journal et le portail de vérification.
+
+## Plusieurs équipes
+
+Des équipes de deux, c'est plus d'équipes, et ce qui les relie compte davantage que ce qui se passe dans chacune. Une organisation est un dossier `.coda-org/` partagé par les équipes, dans le même dépôt ou dans un dépôt à part que chaque équipe lit depuis une copie locale. `/coda:org` la met en place. Une fois qu'elle existe :
+
+- **Une intention au-dessus des équipes.** Les contraintes de l'organisation arrivent dans chaque session de chaque équipe ; personne ne les recopie.
+- **Une carte de qui porte quoi.** Chaque équipe déclare ses domaines et ses composants. Deux équipes qui revendiquent la même chose sont signalées aussitôt, et dans un dépôt partagé les agents d'une équipe ne peuvent pas écrire dans le dossier d'une autre.
+- **Une mémoire qui traverse les équipes.** `/coda:recall` cherche dans les décisions de toutes les équipes ; chacune est prévenue des décisions prises ailleurs qui la concernent ; une contradiction entre deux équipes apparaît chez les deux. Les journaux restent dans chaque équipe.
+- **L'arbitrage.** Ce que deux équipes ne peuvent pas régler est tranché une fois par un humain nommé (`/coda:arbitrate`) et s'impose aux équipes concernées.
+- **Des planchers.** L'organisation fixe ce qu'aucun harness d'équipe ne peut affaiblir ; chaque équipe règle son niveau au-dessus.
+- **L'ensemble d'un coup d'œil.** `/coda:overview` montre les périmètres portés, ce qui est ouvert entre équipes et les équipes qui disent être trop petites. Elle ne classe personne et ne compte pas les effectifs.
+- **La scission.** `/coda:split` fait d'une équipe plusieurs sandwich teams, chacune avec son périmètre et les décisions qui la concernent.
+
+Une équipe sans organisation fonctionne exactement comme avant.
 
 ## Niveaux d'autonomie
 
@@ -67,7 +84,7 @@ Une équipe gagne le niveau suivant avec les preuves de son propre journal, et u
 
 ## Le cadre
 
-Le plugin est l'implémentation de référence d'un cadre, décrit dans [docs/framework.md](docs/framework.md) (en anglais) : la sandwich team, les trois étages, les quatre rôles, les conditions d'entrée, la trajectoire de huit à deux, le niveau entreprise. Voir aussi [le contrat de harness](docs/harness-contract.md) et [ce qui vient de SYNAPSE](docs/from-synapse.md).
+Le plugin est l'implémentation de référence d'un cadre, décrit dans [docs/framework.md](docs/framework.md) (en anglais) : la sandwich team, les trois étages, les quatre rôles, les conditions d'entrée, la trajectoire de huit à deux, ce que partagent plusieurs équipes. Voir aussi [le contrat de harness](docs/harness-contract.md) et [ce qui vient de SYNAPSE](docs/from-synapse.md).
 
 Une position n'est pas négociable : à effectif égal, plus d'équipes et plus de périmètre. Les personnes libérées par une scission forment de nouvelles sandwich teams. La réduction d'effectifs n'est jamais un objectif du cadre.
 

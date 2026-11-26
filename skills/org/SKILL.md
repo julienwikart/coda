@@ -58,7 +58,7 @@ If a team's organisation cannot be read, its last floors read on that machine ke
 
 ## The whole at a glance, and splitting a team
 
-`/coda:overview` shows the scopes carried, what is open between teams and which teams have said they are too small; it stands in for a synchronisation meeting. `/coda:split` turns one team into several sandwich teams, each with its scope and the decisions that concern it.
+`/coda:overview` shows the scopes carried, what is open between teams and which teams have said they are too small. `/coda:split` turns one team into several sandwich teams, each with its scope and the decisions that concern it.
 
 ## Inspect it
 

@@ -5,7 +5,7 @@ description: Run a pattern review — find what keeps recurring in how the team 
 
 # Pattern review
 
-This replaces the retrospective held on a calendar: recurrences are read from what actually happened, and the humans spend their time on the decision, not on remembering.
+Recurrences are read from what actually happened, as they appear, and the humans spend their time on the decision, not on remembering.
 
 The CODA command line is `node "${CLAUDE_PLUGIN_ROOT}/scripts/coda.mjs"`, written `coda` below. Run it from the project root.
 
