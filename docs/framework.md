@@ -105,8 +105,6 @@ All of this is implemented by the plugin, for teams that share a repository and 
 
 ## What becomes of those who led several teams
 
-*A proposal, to be validated.*
-
 Someone who followed two teams of eight would have to follow eight teams of two. Following does not scale, and it is no longer needed: memory carries what teams used to be told, the map says who answers for what, and the view shows the whole.
 
 What remains is what no agent holds and no team can hold alone, and it is three things:
@@ -136,5 +134,5 @@ The agents carry the same position: patterns and audits are about the system, ne
 - How long bounded autonomy must hold before a split.
 - The signal that makes a team grow again: each team names its own; whether some signals should be common to an organisation is open.
 - How many teams one ethical guardian can follow. Nothing limits it; a reference figure will come from the field.
-- How many teams one person can hold the organisation's intent and arbitration for, and what the proposal above becomes in practice.
+- How many teams one person can hold the organisation's intent and arbitration for.
 - Whether a level between the team and the organisation is ever needed. Two are assumed until an organisation shows otherwise.
